@@ -1,0 +1,193 @@
+---
+title: 'Authentication'
+description: 'Learn how to authenticate API requests using JWT tokens'
+---
+
+## Overview
+
+The Prompts.dev API uses JWT (JSON Web Token) based authentication to secure endpoints. After logging in via OAuth, you'll receive a JWT token that must be included in subsequent API requests.
+
+## Token Format
+
+JWT tokens are issued using the HS256 signing algorithm and contain the following claims:
+
+<ResponseField name="user_id" type="string" required>
+  The unique identifier of the authenticated user
+</ResponseField>
+
+<ResponseField name="sub" type="string" required>
+  Subject claim (same as user_id)
+</ResponseField>
+
+<ResponseField name="iat" type="number" required>
+  Issued at timestamp (Unix time)
+</ResponseField>
+
+<ResponseField name="exp" type="number" required>
+  Expiration timestamp (Unix time)
+</ResponseField>
+
+<Note>
+  Tokens expire after a configured period (typically 24-72 hours). The exact expiration time is set by the `JWT_EXPIRY_HOURS` environment variable on the server.
+</Note>
+
+## Token Verification
+
+Tokens are verified using the server's JWT secret. The authentication middleware:
+
+1. Extracts the token from the `Authorization` header
+2. Validates the token signature using HS256
+3. Checks the expiration time
+4. Extracts the `user_id` claim and adds it to the request context
+
+Reference: `internal/auth/token.go:29` and `internal/auth/middleware.go:23`
+
+## Making Authenticated Requests
+
+To authenticate API requests, include your JWT token in the `Authorization` header using the Bearer scheme:
+
+<CodeGroup>
+
+```bash cURL
+curl https://api.prompts.dev/v1/prompts \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-prompt",
+    "description": "A helpful prompt",
+    "visibility": "public"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.prompts.dev/v1/prompts', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'my-prompt',
+    description: 'A helpful prompt',
+    visibility: 'public'
+  })
+});
+
+const data = await response.json();
+```
+
+```python Python
+import requests
+
+headers = {
+    'Authorization': f'Bearer {token}',
+    'Content-Type': 'application/json'
+}
+
+data = {
+    'name': 'my-prompt',
+    'description': 'A helpful prompt',
+    'visibility': 'public'
+}
+
+response = requests.post(
+    'https://api.prompts.dev/v1/prompts',
+    headers=headers,
+    json=data
+)
+
+result = response.json()
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+)
+
+func createPrompt(token string) error {
+    data := map[string]string{
+        "name":        "my-prompt",
+        "description": "A helpful prompt",
+        "visibility":  "public",
+    }
+    
+    jsonData, _ := json.Marshal(data)
+    req, _ := http.NewRequest("POST", 
+        "https://api.prompts.dev/v1/prompts", 
+        bytes.NewBuffer(jsonData))
+    
+    req.Header.Set("Authorization", "Bearer "+token)
+    req.Header.Set("Content-Type", "application/json")
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    return err
+}
+```
+
+</CodeGroup>
+
+## Authentication Errors
+
+If authentication fails, the API returns a `401 Unauthorized` response:
+
+### Missing Token
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "missing bearer token"
+  }
+}
+```
+
+### Invalid or Expired Token
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "invalid access token"
+  }
+}
+```
+
+<Note>
+  The middleware automatically aborts the request and returns an error response when authentication fails. No further processing occurs.
+</Note>
+
+## Protected Endpoints
+
+The following endpoints require authentication:
+
+- `POST /v1/prompts` - Create a new prompt
+- `POST /v1/prompts/:id/versions` - Upload a new version
+
+Reference: `cmd/api/main.go:60`
+
+## Extracting User Information
+
+In authenticated requests, the user ID is available in two ways:
+
+**From Gin Context:**
+```go
+userID, ok := auth.UserIDFromGin(c)
+if !ok {
+    // handle missing user ID
+}
+```
+
+**From Standard Context:**
+```go
+userID, ok := auth.UserIDFromContext(ctx)
+if !ok {
+    // handle missing user ID
+}
+```
+
+Reference: `internal/auth/middleware.go:47`

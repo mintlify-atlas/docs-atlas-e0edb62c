@@ -1,0 +1,316 @@
+---
+title: 'OAuth Authentication'
+description: 'Authenticate users with GitHub and Google OAuth providers'
+---
+
+## Overview
+
+Prompts.dev uses OAuth 2.0 for user authentication. Users can sign in with GitHub or Google accounts. After successful authentication, a JWT token is issued for API access.
+
+## Supported Providers
+
+- **GitHub** - Uses scopes: `read:user`, `user:email`
+- **Google** - Uses scopes: `openid`, `email`, `profile`
+
+## OAuth Endpoints
+
+### Initiate Login
+
+<ParamField path="provider" type="string" required>
+  OAuth provider: `github` or `google`
+</ParamField>
+
+<ParamField query="state" type="string">
+  Optional CSRF state parameter. If not provided, a random state will be generated.
+</ParamField>
+
+<ParamField query="cli" type="boolean">
+  Set to `true` for CLI authentication flow. Defaults to `false` for web flow.
+</ParamField>
+
+```bash GET /v1/auth/:provider/login
+curl https://api.prompts.dev/v1/auth/github/login
+```
+
+**Response:**
+Redirects to the OAuth provider's authorization page.
+
+<Note>
+  The API sets a signed cookie `prompts_oauth_state` containing the provider and state for CSRF protection. This cookie expires after 5 minutes.
+</Note>
+
+Reference: `internal/auth/handler.go:31`
+
+### OAuth Callback
+
+<ParamField path="provider" type="string" required>
+  OAuth provider: `github` or `google`
+</ParamField>
+
+<ParamField query="state" type="string" required>
+  CSRF state parameter returned by the OAuth provider
+</ParamField>
+
+<ParamField query="code" type="string" required>
+  Authorization code returned by the OAuth provider
+</ParamField>
+
+```bash GET /v1/auth/:provider/callback
+curl "https://api.prompts.dev/v1/auth/github/callback?code=abc123&state=xyz789"
+```
+
+**Web Flow Response (200 OK):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**CLI Flow Response:**
+Redirects to `http://localhost:{CLI_OAUTH_PORT}/callback?token={jwt}&state={state}`
+
+<Note>
+  For web flows, the token is also set as an HttpOnly cookie named `prompts_token`.
+</Note>
+
+Reference: `internal/auth/handler.go:68`
+
+## Complete OAuth Flow
+
+<Steps>
+
+<Step title="Redirect to Login">
+  Direct users to the login endpoint:
+  
+  ```bash
+  https://api.prompts.dev/v1/auth/github/login
+  ```
+  
+  The server generates a random CSRF state token, signs it with HMAC-SHA256, and stores it in a secure cookie.
+</Step>
+
+<Step title="User Authorizes">
+  The user is redirected to GitHub/Google where they authorize your application.
+</Step>
+
+<Step title="Provider Redirects to Callback">
+  After authorization, the provider redirects back with `code` and `state` parameters:
+  
+  ```
+  https://api.prompts.dev/v1/auth/github/callback?code=abc123&state=xyz789
+  ```
+</Step>
+
+<Step title="Server Validates State">
+  The server:
+  1. Retrieves the signed state from the cookie
+  2. Verifies the HMAC signature
+  3. Compares the state parameter with the cookie value
+  
+  If validation fails, returns `401 UNAUTHORIZED`.
+  
+  Reference: `internal/auth/handler.go:84`
+</Step>
+
+<Step title="Exchange Code for Token">
+  The server exchanges the authorization code for an OAuth access token with the provider.
+  
+  Reference: `internal/auth/service.go:72`
+</Step>
+
+<Step title="Fetch User Profile">
+  Using the OAuth access token, the server fetches the user's profile:
+  
+  - **GitHub**: Calls `https://api.github.com/user` and optionally `https://api.github.com/user/emails`
+  - **Google**: Calls `https://openidconnect.googleapis.com/v1/userinfo`
+  
+  Reference: `internal/auth/service.go:181` and `internal/auth/service.go:290`
+</Step>
+
+<Step title="Create or Link User">
+  The server:
+  1. Checks if an identity exists for this provider + provider user ID
+  2. If found, retrieves the existing user
+  3. If not found, checks for an existing user by verified email
+  4. Creates a new user if needed
+  5. Creates an identity record linking the user to the OAuth provider
+  
+  Reference: `internal/auth/service.go:88`
+</Step>
+
+<Step title="Issue JWT Token">
+  A JWT token is generated containing the user's ID and expiration time.
+  
+  Reference: `internal/auth/service.go:130`
+</Step>
+
+<Step title="Return Token">
+  - **Web flow**: Returns JSON response with token and sets HttpOnly cookie
+  - **CLI flow**: Redirects to localhost callback URL with token in query parameter
+</Step>
+
+</Steps>
+
+## CSRF Protection
+
+The OAuth flow implements CSRF protection using a signed state parameter:
+
+1. **State Generation**: A 32-byte random state is generated using `crypto/rand`
+2. **State Signing**: The state is concatenated with the provider name and signed using HMAC-SHA256
+3. **Cookie Storage**: The signed state is stored in an HttpOnly cookie
+4. **Verification**: On callback, the signature is verified and the state is compared
+
+Reference: `internal/auth/handler.go:139`
+
+## Example: Complete GitHub OAuth Flow
+
+<CodeGroup>
+
+```bash Step 1: Initiate Login
+curl -i https://api.prompts.dev/v1/auth/github/login
+
+# Response:
+# HTTP/1.1 302 Found
+# Location: https://github.com/login/oauth/authorize?client_id=...&state=...
+# Set-Cookie: prompts_oauth_state=github|...; Max-Age=300; HttpOnly
+```
+
+```bash Step 2: User Authorizes (Browser)
+# User visits the GitHub authorization URL and clicks "Authorize"
+# GitHub redirects back to:
+https://api.prompts.dev/v1/auth/github/callback?code=abc123&state=xyz789
+```
+
+```bash Step 3: Handle Callback
+curl -i -b "prompts_oauth_state=github|xyz789.signature" \
+  "https://api.prompts.dev/v1/auth/github/callback?code=abc123&state=xyz789"
+
+# Response:
+# HTTP/1.1 200 OK
+# Set-Cookie: prompts_token=eyJhbGc...; Max-Age=259200; HttpOnly
+# Content-Type: application/json
+#
+# {
+#   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiY2x4eXo..."
+# }
+```
+
+```bash Step 4: Use Token for API Requests
+curl https://api.prompts.dev/v1/prompts \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-prompt",
+    "description": "A helpful prompt",
+    "visibility": "public"
+  }'
+```
+
+</CodeGroup>
+
+## CLI Authentication Flow
+
+For CLI tools, use the `cli=true` query parameter:
+
+```bash
+https://api.prompts.dev/v1/auth/github/login?cli=true
+```
+
+After successful authentication, the server redirects to:
+
+```
+http://localhost:{CLI_OAUTH_PORT}/callback?token={jwt}&state={state}
+```
+
+Your CLI tool should:
+1. Start a local HTTP server on the configured port (default from `CLI_OAUTH_PORT` env var)
+2. Open the login URL in the user's browser
+3. Listen for the callback request
+4. Extract the token from the query parameter
+5. Store the token securely for future API requests
+
+Reference: `internal/auth/handler.go:127`
+
+## Error Responses
+
+### Unsupported Provider
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "validation failed",
+    "details": {
+      "provider": "unsupported provider"
+    }
+  }
+}
+```
+
+### Missing Code or State
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_FAILED",
+    "message": "missing oauth state or code"
+  }
+}
+```
+
+### Invalid State (CSRF)
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "invalid oauth state"
+  }
+}
+```
+
+### OAuth Exchange Failed
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "oauth exchange failed"
+  }
+}
+```
+
+## Provider-Specific Details
+
+### GitHub
+
+**Scopes Requested:**
+- `read:user` - Read user profile information
+- `user:email` - Read user email addresses
+
+**User Data Fetched:**
+- User ID (required)
+- Username (login)
+- Avatar URL
+- Email (from profile or emails endpoint)
+- Email verification status
+
+If the email is not public in the user's profile, the API fetches it from the `/user/emails` endpoint and prioritizes primary verified emails.
+
+Reference: `internal/auth/service.go:160`
+
+### Google
+
+**Scopes Requested:**
+- `openid` - OpenID Connect authentication
+- `email` - User's email address
+- `profile` - User's profile information
+
+**User Data Fetched:**
+- User ID (sub)
+- Name
+- Email
+- Email verification status
+- Picture URL
+
+Reference: `internal/auth/service.go:269`

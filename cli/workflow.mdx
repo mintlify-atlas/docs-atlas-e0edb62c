@@ -1,0 +1,503 @@
+---
+title: 'CLI Workflow'
+description: 'End-to-end guide for creating, publishing, and using prompt packages with the Prompts.dev CLI'
+---
+
+This guide walks through a complete workflow: creating a new prompt package, publishing it to the registry, installing it in another project, and running it with variables.
+
+## Overview
+
+A typical prompt development workflow involves:
+
+<Steps>
+  <Step title="Authenticate">
+    Login to the Prompts.dev platform
+  </Step>
+  <Step title="Create">
+    Initialize a new prompt package with the required structure
+  </Step>
+  <Step title="Develop">
+    Write your prompt template and configure metadata
+  </Step>
+  <Step title="Publish">
+    Upload your package to the registry
+  </Step>
+  <Step title="Distribute">
+    Install and use the prompt in your projects
+  </Step>
+</Steps>
+
+## Complete example
+
+Let's create a prompt for generating API documentation from code.
+
+### 1. Authentication
+
+First, authenticate with GitHub:
+
+```bash
+prompt login
+```
+
+This opens your browser for OAuth authentication. Once complete, your token is stored in `~/.prompts/config.json` (see [main.go:395-403](cmd/cli/main.go:395)).
+
+<Note>
+  You can also use `--provider google` for Google OAuth (see [main.go:155](cmd/cli/main.go:155)).
+</Note>
+
+### 2. Create package structure
+
+Initialize a new prompt package:
+
+```bash
+prompt init api-doc-generator
+```
+
+This creates the following structure:
+
+```
+api-doc-generator/
+├── prompt.yaml
+├── prompt.md
+└── README.md
+```
+
+### 3. Configure the manifest
+
+Edit `prompt.yaml` to define your prompt's metadata and required inputs:
+
+```yaml prompt.yaml
+name: api-doc-generator
+description: Generate comprehensive API documentation from code
+version: 1.0.0
+author: topboyasante
+inputs:
+  - name: language
+    required: true
+  - name: code
+    required: true
+  - name: style
+    required: false
+tags:
+  - documentation
+  - api
+  - code-generation
+```
+
+<Note>
+  The manifest must include `name` and `version` fields for publishing (see [main.go:417-425](cmd/cli/main.go:417)).
+</Note>
+
+### 4. Write the prompt template
+
+Edit `prompt.md` to create your prompt with variable placeholders:
+
+```markdown prompt.md
+You are an expert technical writer specializing in API documentation.
+
+Generate comprehensive API documentation for the following \{\{language\}\} code:
+
+\`\`\`\{\{language\}\}
+\{\{code\}\}
+\`\`\`
+
+Documentation requirements:
+- Clear description of the API's purpose
+- Parameter descriptions with types
+- Return value documentation
+- Example usage with realistic data
+- Error handling information
+- Follow \{\{style\}\} documentation style (if provided)
+
+Provide the documentation in Markdown format.
+```
+
+The CLI uses simple `{{variable}}` syntax for template variables (see [main.go:326-329](cmd/cli/main.go:326)).
+
+### 5. Document your prompt
+
+Update `README.md` with usage instructions:
+
+```markdown README.md
+# API Documentation Generator
+
+Generate comprehensive API documentation from code snippets.
+
+## Inputs
+
+- `language` (required): Programming language of the code
+- `code` (required): The code to document
+- `style` (optional): Documentation style guide to follow
+
+## Example
+
+```bash
+prompt run api-doc-generator \
+  --var language=python \
+  --var code="def add(a, b): return a + b" \
+  --var style="Google Python Style Guide"
+```
+
+## Tags
+
+- documentation
+- api
+- code-generation
+```
+
+### 6. Publish to registry
+
+Publish your prompt package:
+
+```bash
+cd api-doc-generator
+prompt publish
+```
+
+The CLI will:
+1. Validate your `prompt.yaml` manifest (see [main.go:209-211](cmd/cli/main.go:209))
+2. Create a tarball of your package (see [main.go:226-230](cmd/cli/main.go:226))
+3. Upload it to the registry (see [main.go:236-238](cmd/cli/main.go:236))
+
+**Expected output:**
+
+```
+Published api-doc-generator@1.0.0
+```
+
+### 7. Install in another project
+
+Now you can install and use your prompt in any project:
+
+```bash
+cd ~/my-project
+prompt install topboyasante/api-doc-generator
+```
+
+The package is downloaded to `.prompts/api-doc-generator/` (see [main.go:286](cmd/cli/main.go:286)).
+
+**Expected output:**
+
+```
+Installed topboyasante/api-doc-generator@1.0.0 into .prompts/api-doc-generator
+```
+
+### 8. Run the prompt
+
+Render the prompt with your variables:
+
+```bash
+prompt run api-doc-generator \
+  --var language=python \
+  --var code="def calculate_total(items, tax_rate=0.1):\n    subtotal = sum(item['price'] for item in items)\n    return subtotal * (1 + tax_rate)" \
+  --var style="Google Python Style Guide"
+```
+
+The CLI validates required inputs (see [main.go:318-324](cmd/cli/main.go:318)) and performs variable substitution (see [main.go:326-329](cmd/cli/main.go:326)).
+
+**Output:**
+
+```
+You are an expert technical writer specializing in API documentation.
+
+Generate comprehensive API documentation for the following python code:
+
+def calculate_total(items, tax_rate=0.1):
+    subtotal = sum(item['price'] for item in items)
+    return subtotal * (1 + tax_rate)
+
+Documentation requirements:
+- Clear description of the API's purpose
+- Parameter descriptions with types
+- Return value documentation
+- Example usage with realistic data
+- Error handling information
+- Follow Google Python Style Guide documentation style
+
+Provide the documentation in Markdown format.
+```
+
+## Publishing updates
+
+To publish a new version:
+
+<Steps>
+  <Step title="Update version">
+    Increment the version in `prompt.yaml`:
+
+    ```yaml
+    version: 1.1.0
+    ```
+  </Step>
+
+  <Step title="Make changes">
+    Update your prompt template or metadata
+  </Step>
+
+  <Step title="Publish">
+    ```bash
+    prompt publish
+    ```
+
+    Output: `Published api-doc-generator@1.1.0`
+  </Step>
+</Steps>
+
+## Working with versions
+
+Install specific versions or always get the latest:
+
+<CodeGroup>
+  ```bash Latest version
+  prompt install topboyasante/api-doc-generator
+  ```
+
+  ```bash Specific version
+  prompt install topboyasante/api-doc-generator@1.0.0
+  ```
+
+  ```bash Upgrade to latest
+  prompt install topboyasante/api-doc-generator
+  ```
+</CodeGroup>
+
+When no version is specified, the CLI fetches the latest from the API (see [main.go:270-279](cmd/cli/main.go:270)).
+
+## Searching for prompts
+
+Discover prompts created by the community:
+
+```bash
+prompt search documentation
+```
+
+**Output:**
+
+```
+NAME                    DESCRIPTION
+api-doc-generator       Generate comprehensive API documentation from code
+code-explainer          Explain code with detailed documentation
+doc-reviewer            Review and improve existing documentation
+```
+
+Results are sorted alphabetically (see [main.go:353](cmd/cli/main.go:353)).
+
+## Best practices
+
+### Package structure
+
+<Accordion title="Keep prompts focused">
+  Each prompt package should solve one specific problem. Instead of a general "code-helper" prompt, create:
+  - `code-reviewer` - Review code for bugs and improvements
+  - `code-documenter` - Generate documentation
+  - `code-explainer` - Explain complex code
+</Accordion>
+
+<Accordion title="Use semantic versioning">
+  Follow [semver](https://semver.org/) for versions:
+  - `1.0.0` → `1.0.1` - Bug fixes or minor improvements
+  - `1.0.0` → `1.1.0` - New features, backward compatible
+  - `1.0.0` → `2.0.0` - Breaking changes
+</Accordion>
+
+<Accordion title="Document required inputs">
+  Always explain what each input does in your README:
+
+  ```markdown
+  ## Inputs
+
+  - `language` (required): Programming language of the code (e.g., python, javascript, go)
+  - `code` (required): The code snippet to document (string)
+  - `style` (optional): Style guide to follow (e.g., "Google Python Style Guide")
+  ```
+</Accordion>
+
+<Accordion title="Tag appropriately">
+  Use descriptive tags to help users find your prompt:
+
+  ```yaml
+  tags:
+    - documentation    # Primary purpose
+    - api             # Use case
+    - python          # Relevant language
+    - code-generation # Category
+  ```
+</Accordion>
+
+<Accordion title="Test before publishing">
+  Run your prompt locally before publishing:
+
+  ```bash
+  # In your package directory
+  cd api-doc-generator
+  
+  # Install locally
+  mkdir -p .prompts/api-doc-generator
+  cp -r . .prompts/api-doc-generator/
+  
+  # Test
+  prompt run api-doc-generator --var language=python --var code="..."
+  ```
+</Accordion>
+
+### Variable naming
+
+<Accordion title="Use clear, descriptive names">
+  ❌ Bad:
+  ```yaml
+  inputs:
+    - name: x
+    - name: y
+    - name: z
+  ```
+
+  ✅ Good:
+  ```yaml
+  inputs:
+    - name: language
+    - name: code
+    - name: style
+  ```
+</Accordion>
+
+<Accordion title="Mark truly required inputs">
+  Only mark inputs as `required: true` if the prompt cannot function without them (see [main.go:318-324](cmd/cli/main.go:318)):
+
+  ```yaml
+  inputs:
+    - name: code
+      required: true      # Essential
+    - name: language
+      required: true      # Essential
+    - name: style
+      required: false     # Optional enhancement
+  ```
+</Accordion>
+
+### Integration examples
+
+<Accordion title="CI/CD pipeline">
+  Publish prompts automatically:
+
+  ```yaml .github/workflows/publish.yml
+  name: Publish Prompt
+  on:
+    push:
+      tags:
+        - 'v*'
+  
+  jobs:
+    publish:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v3
+        - uses: actions/setup-go@v4
+          with:
+            go-version: '1.25'
+        - name: Install CLI
+          run: go install github.com/topboyasante/prompts/cmd/cli@latest
+        - name: Publish
+          env:
+            PROMPTS_API_URL: ${{ secrets.PROMPTS_API_URL }}
+          run: |
+            echo '${{ secrets.PROMPTS_TOKEN }}' > ~/.prompts/config.json
+            prompt publish
+  ```
+</Accordion>
+
+<Accordion title="NPM scripts">
+  Add prompt commands to `package.json`:
+
+  ```json package.json
+  {
+    "scripts": {
+      "prompt:install": "prompt install topboyasante/api-doc-generator",
+      "prompt:run": "prompt run api-doc-generator --var language=typescript",
+      "docs:generate": "npm run prompt:install && npm run prompt:run"
+    }
+  }
+  ```
+</Accordion>
+
+<Accordion title="Shell scripts">
+  Automate prompt rendering:
+
+  ```bash generate-docs.sh
+  #!/bin/bash
+  set -e
+
+  # Install prompt if not present
+  if [ ! -d ".prompts/api-doc-generator" ]; then
+    prompt install topboyasante/api-doc-generator
+  fi
+
+  # Generate docs for all Python files
+  for file in src/**/*.py; do
+    code=$(cat "$file")
+    output="docs/$(basename "$file" .py).md"
+    
+    prompt run api-doc-generator \
+      --var language=python \
+      --var code="$code" \
+      --var style="Google" > "$output"
+    
+    echo "Generated documentation: $output"
+  done
+  ```
+</Accordion>
+
+## Troubleshooting
+
+<Accordion title="Login timeout">
+  **Problem:** Login times out after 2 minutes (see [main.go:149-151](cmd/cli/main.go:149))
+
+  **Solution:**
+  - Ensure port 9876 is not blocked by firewall
+  - Try `--provider google` if GitHub is blocked
+  - Check that your browser isn't blocking the callback
+</Accordion>
+
+<Accordion title="Missing required variable">
+  **Problem:** `error: missing required --var [name]`
+
+  **Solution:**
+  Check the manifest for required inputs (see [main.go:318-324](cmd/cli/main.go:318)):
+  ```bash
+  cat .prompts/[name]/prompt.yaml
+  ```
+
+  Provide all required variables:
+  ```bash
+  prompt run [name] --var required_field=value
+  ```
+</Accordion>
+
+<Accordion title="Prompt already exists">
+  **Problem:** `prompt already exists; fetch prompt id and publish a new version`
+
+  **Solution:**
+  You're trying to publish a prompt with a name that's already taken (see [main.go:223](cmd/cli/main.go:223)). Either:
+  - Choose a different name in `prompt.yaml`
+  - If you own the prompt, increment the version and publish again
+</Accordion>
+
+<Accordion title="File exists error">
+  **Problem:** `file exists: [path] (use --force to overwrite)`
+
+  **Solution:**
+  The directory already contains files (see [main.go:182-186](cmd/cli/main.go:182)). Use:
+  ```bash
+  prompt init my-prompt --force
+  ```
+</Accordion>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api/authentication">
+    Learn about the underlying REST API
+  </Card>
+  <Card title="Concepts" icon="book" href="/concepts/prompts">
+    Understand core concepts of Prompts.dev
+  </Card>
+</CardGroup>

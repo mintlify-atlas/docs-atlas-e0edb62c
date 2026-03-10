@@ -1,0 +1,248 @@
+---
+title: Versions
+description: Understanding semantic versioning for prompts
+---
+
+## What is a Prompt Version?
+
+A **prompt version** represents a specific published iteration of a prompt package. Versions allow you to:
+
+- Track changes to prompts over time
+- Install specific versions for reproducibility
+- Update prompts safely without breaking existing workflows
+
+<Note>
+Prompts.dev uses **semantic versioning** (semver) for all prompt versions.
+</Note>
+
+## Version Data Model
+
+Each version is stored in the database with the following structure:
+
+```go
+type PromptVersion struct {
+    ID         string    `json:"id"`          // UUID identifier
+    PromptID   string    `json:"prompt_id"`   // Parent prompt ID
+    Version    string    `json:"version"`     // Semantic version (e.g., "1.0.0")
+    TarballURL string    `json:"tarball_url"` // Storage path to tarball
+    CreatedAt  time.Time `json:"created_at"`  // Publication timestamp
+}
+```
+
+### Key Characteristics
+
+<Card title="Unique Constraint" icon="lock">
+  Each version has a unique constraint on `(prompt_id, version)`, preventing duplicate versions for the same prompt.
+</Card>
+
+<Card title="Immutability" icon="shield">
+  Once published, versions are immutable. To make changes, publish a new version.
+</Card>
+
+<Card title="Tarball Storage" icon="database">
+  Each version stores a reference to its tarball in object storage (S3-compatible).
+</Card>
+
+## Semantic Versioning
+
+Prompts.dev follows the [Semantic Versioning 2.0.0](https://semver.org/) specification:
+
+```text
+MAJOR.MINOR.PATCH
+```
+
+### Version Components
+
+| Component | When to Increment | Example |
+|-----------|------------------|----------|
+| **MAJOR** | Breaking changes to prompt behavior or variables | `1.0.0` → `2.0.0` |
+| **MINOR** | New functionality in a backwards-compatible manner | `1.0.0` → `1.1.0` |
+| **PATCH** | Backwards-compatible bug fixes or improvements | `1.0.0` → `1.0.1` |
+
+<Accordion title="Examples of version changes">
+  **MAJOR (Breaking)**
+  - Removing or renaming a required variable
+  - Completely changing prompt behavior
+  - Example: `{{product}}` → `{{product_name}}`
+
+  **MINOR (Feature)**
+  - Adding new optional variables
+  - Enhancing prompt output without breaking existing use cases
+  - Example: Adding `{{tone}}` as an optional variable
+
+  **PATCH (Fix)**
+  - Fixing typos
+  - Improving clarity without changing behavior
+  - Minor wording adjustments
+</Accordion>
+
+## Publishing Versions
+
+When you publish a prompt, you create a new version:
+
+```bash
+prompt publish
+```
+
+### Publication Process
+
+1. **Read `prompt.yaml`**: Extract version and metadata
+2. **Validate structure**: Ensure required files exist
+3. **Create tarball**: Package files using `CreateTarball()` from `internal/versions/tarball.go`
+4. **Upload to storage**: Store tarball in object storage
+5. **Register version**: Create database record with tarball URL
+
+<Info>
+The version number comes from the `version` field in `prompt.yaml`.
+</Info>
+
+### Storage Path Convention
+
+Versions are stored using this path pattern:
+
+```text
+prompts/{owner}/{name}/{version}.tar.gz
+```
+
+Examples:
+```text
+prompts/topboy/landing-page-writer/1.0.0.tar.gz
+prompts/topboy/landing-page-writer/1.1.0.tar.gz
+prompts/topboy/landing-page-writer/2.0.0.tar.gz
+```
+
+## Installing Versions
+
+Install the latest version:
+
+```bash
+prompt install topboy/landing-page-writer
+```
+
+Install a specific version:
+
+```bash
+prompt install topboy/landing-page-writer@1.0.0
+```
+
+### Download Process
+
+1. **Fetch version metadata**: API lookup for version info
+2. **Download tarball**: GET request to tarball URL
+3. **Extract package**: Unpack to `.prompts/{name}/`
+4. **Record download**: Log download event in database
+
+<Accordion title="Download tracking">
+  Each download is recorded in the `downloads` table:
+  
+  ```go
+  type Download struct {
+      ID           string    `json:"id"`
+      PromptID     string    `json:"prompt_id"`
+      VersionID    string    `json:"version_id"`
+      DownloadedAt time.Time `json:"downloaded_at"`
+  }
+  ```
+  
+  This allows tracking prompt popularity and usage analytics.
+</Accordion>
+
+## Version Listing
+
+View all versions of a prompt:
+
+```bash
+prompt versions topboy/landing-page-writer
+```
+
+API endpoint:
+```http
+GET /prompts/{owner}/{name}/versions
+```
+
+Response:
+```json
+[
+  {
+    "version": "2.0.0",
+    "created_at": "2026-03-10T12:00:00Z"
+  },
+  {
+    "version": "1.1.0",
+    "created_at": "2026-03-05T10:30:00Z"
+  },
+  {
+    "version": "1.0.0",
+    "created_at": "2026-03-01T09:15:00Z"
+  }
+]
+```
+
+## Version Constraints
+
+The database enforces several constraints to ensure data integrity:
+
+### Database Constraints
+
+<Card title="Unique Versions" icon="fingerprint">
+  **Constraint**: `UNIQUE (prompt_id, version)`
+  
+  Prevents publishing the same version twice for a prompt.
+</Card>
+
+<Card title="Foreign Key" icon="link">
+  **Reference**: `prompt_id` → `prompts.id`
+  
+  Ensures versions are linked to valid prompts.
+</Card>
+
+<Card title="Required Fields" icon="check">
+  All fields (`prompt_id`, `version`, `tarball_url`) are required and cannot be null.
+</Card>
+
+## Tarball Management
+
+Versions are distributed as gzip-compressed tarballs created by the system:
+
+```go
+// From internal/versions/tarball.go
+func CreateTarball(sourceDir string) (io.ReadCloser, int64, error)
+func ExtractTarball(r io.Reader, destDir string) error
+```
+
+### Tarball Security
+
+The extraction process includes security measures:
+
+- **Path traversal prevention**: Blocks `..` and absolute paths
+- **Destination validation**: Ensures files extract within target directory
+- **Size limits**: Enforces maximum tarball size
+
+<Info>
+Tarballs are immutable once created. Modifications require publishing a new version.
+</Info>
+
+## Version History
+
+Prompts.dev maintains a complete version history:
+
+- All versions remain accessible indefinitely
+- Users can downgrade to previous versions if needed
+- Version metadata includes creation timestamps
+
+<Note>
+Versions cannot be deleted after publication to ensure reproducibility and prevent breaking dependent workflows.
+</Note>
+
+## Best Practices
+
+1. **Follow semver strictly**: Use the correct version component for your changes
+2. **Document changes**: Update README.md to describe version differences
+3. **Test before publishing**: Verify your prompt works as expected
+4. **Start at 1.0.0**: Begin with a stable version for public prompts
+5. **Use pre-releases carefully**: Consider suffixes like `1.0.0-beta` for testing
+
+## Related Concepts
+
+- [Prompts](/concepts/prompts) - Learn about prompt metadata and structure
+- [Packages](/concepts/packages) - Understand package creation and distribution

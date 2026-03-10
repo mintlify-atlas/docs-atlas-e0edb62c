@@ -1,80 +1,262 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with Prompts.dev in under 5 minutes
 ---
 
-## Get started in three steps
+This guide will help you go from zero to running your first prompt package in minutes.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+- A GitHub or Google account for authentication
+- The Prompts CLI installed on your machine
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+## Installation
 
-### Step 2: Deploy your changes
+Install the Prompts CLI using your preferred package manager:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<CodeGroup>
+```bash Homebrew
+brew install prompts
+```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+```bash Go
+go install github.com/topboyasante/prompts/cmd/cli@latest
+```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash Binary
+curl -sSL https://prompts.dev/install.sh | bash
+```
+</CodeGroup>
 
-### Step 3: Go live
+Verify the installation:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+```bash
+prompt --help
+```
+
+<Steps>
+
+<Step title="Authenticate with Prompts.dev">
+
+Login using GitHub or Google OAuth:
+
+```bash
+prompt login
+```
+
+This will open your browser to complete the OAuth flow. By default, GitHub is used as the provider.
+
+To use Google instead:
+
+```bash
+prompt login --provider google
+```
+
+<Note>
+The CLI starts a local server on port 9876 to receive the OAuth callback. You'll see "Login successful. You can close this tab." in your browser when complete.
+</Note>
+
+Expected output:
+```
+Complete login in your browser...
+Logged in successfully
+```
+
+Your JWT token is securely stored in `~/.prompts/config.json`.
+
+</Step>
+
+<Step title="Create your first prompt package">
+
+Initialize a new prompt package:
+
+```bash
+prompt init my-first-prompt
+```
+
+This scaffolds a new prompt package with the following structure:
+
+```
+my-first-prompt/
+├── prompt.yaml    # Package metadata and configuration
+├── prompt.md      # Your prompt template
+└── README.md      # Package documentation
+```
+
+Expected output:
+```
+Initialized prompt package in my-first-prompt
+```
+
+<Tip>
+Use the `--force` flag to overwrite existing files if needed.
+</Tip>
+
+</Step>
+
+<Step title="Configure your prompt">
+
+Navigate to your prompt directory and edit the `prompt.yaml` manifest:
+
+```bash
+cd my-first-prompt
+```
+
+Here's what the default manifest looks like:
+
+```yaml prompt.yaml
+name: my-first-prompt
+description: Describe your prompt
+version: 1.0.0
+author: 
+inputs:
+  - name: product
+    required: true
+tags:
+  - general
+```
+
+Update the manifest with your information:
+- `name`: Unique identifier for your prompt
+- `description`: What your prompt does
+- `version`: Semantic version (e.g., 1.0.0, 1.1.0)
+- `author`: Your username
+- `inputs`: Variables your prompt accepts
+- `tags`: Categories for discoverability
+
+Edit the `prompt.md` file to define your prompt template:
+
+```markdown prompt.md
+Write a high-quality product description for {{product}}.
+
+The description should:
+- Highlight key features
+- Explain benefits to users
+- Use clear, engaging language
+```
+
+<Note>
+Use `{{variable_name}}` syntax to define template variables that match the inputs in your `prompt.yaml`.
+</Note>
+
+</Step>
+
+<Step title="Publish your prompt">
+
+Publish your prompt to the Prompts.dev registry:
+
+```bash
+prompt publish
+```
+
+The CLI will:
+1. Load and validate your `prompt.yaml` manifest
+2. Create a tarball of your prompt package
+3. Upload it to the registry
+
+Expected output:
+```
+Published my-first-prompt@1.0.0
+```
+
+<Warning>
+If a prompt with the same name already exists, you'll receive a conflict error. In that case, you need to increment the version and publish a new version instead.
+</Warning>
+
+</Step>
+
+<Step title="Install and run prompts">
+
+Search for available prompts:
+
+```bash
+prompt search "product description"
+```
+
+Expected output:
+```
+NAME                      DESCRIPTION
+my-first-prompt          Write product descriptions
+other-prompt             Another helpful prompt
+```
+
+Install a prompt package:
+
+```bash
+prompt install username/my-first-prompt
+```
+
+This installs the latest version to `.prompts/my-first-prompt/`. To install a specific version:
+
+```bash
+prompt install username/my-first-prompt@1.0.0
+```
+
+Expected output:
+```
+Installed username/my-first-prompt@1.0.0 into .prompts/my-first-prompt
+```
+
+Run the prompt with variables:
+
+```bash
+prompt run my-first-prompt --var product="AI chatbot"
+```
+
+Expected output:
+```
+Write a high-quality product description for AI chatbot.
+
+The description should:
+- Highlight key features
+- Explain benefits to users
+- Use clear, engaging language
+```
+
+<Tip>
+You can pass multiple variables using multiple `--var` flags:
+```bash
+prompt run my-prompt --var name="value1" --var color="blue"
+```
+</Tip>
+
+</Step>
+
+</Steps>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn about OAuth flows and token management
+  </Card>
+  <Card title="Prompt Packages" icon="file" href="/concepts/packages">
+    Deep dive into prompt package structure
+  </Card>
+  <Card title="CLI Workflow" icon="code" href="/cli/workflow">
+    Master the complete CLI workflow
+  </Card>
+  <Card title="API Reference" icon="star" href="/api/authentication">
+    Explore the REST API endpoints
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+### Login timeout
+
+If login times out after 2 minutes, ensure:
+- Port 9876 is not blocked by a firewall
+- Your browser can reach `localhost:9876`
+- You completed the OAuth flow in the browser
+
+### Missing required variables
+
+If you see an error like `missing required --var product`, ensure all required inputs from `prompt.yaml` are provided with the `--var` flag.
+
+### Unauthenticated errors
+
+If API calls fail with authentication errors:
+1. Verify your token exists: `cat ~/.prompts/config.json`
+2. Re-authenticate: `prompt login`
+3. Check the API endpoint: ensure `PROMPTS_API_URL` environment variable is set correctly (defaults to `https://api.prompts.dev/v1`)

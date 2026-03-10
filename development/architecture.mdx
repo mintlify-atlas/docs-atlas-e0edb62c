@@ -1,0 +1,459 @@
+---
+title: Architecture
+description: Understand the modular monolith architecture of Prompts.dev
+---
+
+## Overview
+
+Prompts.dev uses a **modular monolith** architecture. The codebase is organized into focused internal modules with clear boundaries, but deployed as a single application.
+
+## System Components
+
+The system consists of three main components:
+
+```
+┌─────────┐          ┌──────────────┐          ┌─────────────┐
+│   CLI   │ ────────>│  API Server  │ ────────>│  PostgreSQL │
+└─────────┘   HTTP   └──────────────┘   SQL    └─────────────┘
+                            │
+                            │ S3 API
+                            v
+                      ┌─────────────┐
+                      │ Cloudflare  │
+                      │     R2      │
+                      └─────────────┘
+```
+
+- **CLI** (`cmd/cli`) - Command-line interface for developers
+- **API Server** (`cmd/api`) - HTTP REST API built with Gin
+- **PostgreSQL** - Relational database for metadata storage
+- **Cloudflare R2** - Object storage for prompt tarballs (S3-compatible)
+
+## Internal Modules
+
+The `internal/` directory contains focused modules, each with specific responsibilities:
+
+### Core Business Logic
+
+<CodeGroup>
+```go auth
+// internal/auth
+// OAuth login/callback flows
+// JWT token issuance and validation
+// Authentication middleware
+```
+
+```go users
+// internal/users
+// User model and data access
+// User repository (GORM)
+```
+
+```go identities
+// internal/identities
+// Provider identity linking
+// Maps OAuth providers (github, google) to users
+```
+
+```go prompts
+// internal/prompts
+// Prompt create/get/search APIs
+// Prompt repository with tag support
+```
+
+```go versions
+// internal/versions
+// Version upload/list/download
+// Tarball packaging and extraction
+```
+</CodeGroup>
+
+### Infrastructure
+
+<CodeGroup>
+```go storage
+// internal/storage
+// Cloudflare R2 client abstraction
+// Presigned URL generation
+// S3-compatible interface
+```
+
+```go db
+// internal/db
+// GORM database connection
+// Automatic migration runner
+```
+
+```go server
+// internal/server
+// Gin router setup
+// Common middleware (request ID, CORS, logging)
+// Standard response helpers
+```
+
+```go config
+// internal/config
+// Environment variable loading
+// Configuration validation
+```
+</CodeGroup>
+
+## Request Lifecycle
+
+Every API request flows through these stages:
+
+<Steps>
+  <Step title="Request enters Gin router">
+    All routes are mounted under `/v1` for versioning:
+    ```go
+    v1 := r.Group("/v1")
+    v1.GET("/prompts", promptsHandler.Search)
+    v1.POST("/prompts", authMiddleware, promptsHandler.Create)
+    ```
+  </Step>
+
+  <Step title="Request ID middleware">
+    Assigns a unique UUID to each request and sets `X-Request-ID` header:
+    ```go
+    func requestIDMiddleware() gin.HandlerFunc {
+        return func(c *gin.Context) {
+            id := uuid.NewString()
+            c.Set(requestIDKey, id)
+            c.Writer.Header().Set("X-Request-ID", id)
+            c.Next()
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Authentication middleware (protected routes only)">
+    Validates JWT bearer token on protected routes:
+    ```go
+    authorized := v1.Group("/")
+    authorized.Use(authMiddleware.Authenticate())
+    {
+        authorized.POST("/prompts", promptsHandler.Create)
+        authorized.POST("/prompts/:id/versions", versionsHandler.Upload)
+    }
+    ```
+  </Step>
+
+  <Step title="Handler executes business logic">
+    Handler calls repository methods to interact with the database:
+    ```go
+    func (h *Handler) Create(c *gin.Context) {
+        // Validate request
+        // Extract user ID from context
+        // Call repository
+        p, err := h.repo.Create(ctx, prompt, tags)
+        // Return response
+    }
+    ```
+  </Step>
+
+  <Step title="Structured JSON response">
+    Responses use a consistent envelope format:
+    ```json
+    {
+      "request_id": "550e8400-e29b-41d4-a716-446655440000",
+      "data": { ... }
+    }
+    ```
+  </Step>
+
+  <Step title="Request logging">
+    Structured JSON logs include status code, latency, and metadata:
+    ```json
+    {
+      "request_id": "550e8400-e29b-41d4-a716-446655440000",
+      "method": "POST",
+      "path": "/v1/prompts",
+      "status": 201,
+      "latency_ms": 45,
+      "user_id": "user_123"
+    }
+    ```
+  </Step>
+</Steps>
+
+## Layer Architecture
+
+The codebase follows a layered architecture pattern:
+
+```
+┌─────────────────────────────────────┐
+│     API Handlers (HTTP Layer)       │  ← Gin handlers, request/response
+├─────────────────────────────────────┤
+│   Business Logic (Service Layer)    │  ← Services, domain logic
+├─────────────────────────────────────┤
+│  Data Access (Repository Layer)     │  ← GORM repositories
+├─────────────────────────────────────┤
+│      Database (PostgreSQL)           │  ← Persistent storage
+└─────────────────────────────────────┘
+```
+
+### Example: Prompts Module
+
+<CodeGroup>
+```go handler.go
+// HTTP layer - handles requests and responses
+type Handler struct {
+    repo Repository
+}
+
+func (h *Handler) Create(c *gin.Context) {
+    var req createPromptRequest
+    c.ShouldBindJSON(&req)
+    
+    p, err := h.repo.Create(ctx, prompt, tags)
+    
+    server.RespondJSON(c, http.StatusCreated, p)
+}
+```
+
+```go repository.go
+// Data access layer - GORM interactions
+type Repository interface {
+    Create(ctx context.Context, p *Prompt, tags []string) (*Prompt, error)
+    FindByOwnerAndName(ctx context.Context, owner, name string) (*Prompt, error)
+}
+
+func (r *GORMRepository) Create(ctx context.Context, p *Prompt, tags []string) (*Prompt, error) {
+    return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        tx.Create(p)
+        // Handle tags...
+    })
+}
+```
+
+```go model.go
+// Domain models
+type Prompt struct {
+    ID          string    `gorm:"primaryKey"`
+    Name        string    `gorm:"uniqueIndex:idx_owner_name"`
+    Description string
+    OwnerID     string    `gorm:"index"`
+    CreatedAt   time.Time
+}
+```
+</CodeGroup>
+
+## Authentication Architecture
+
+Prompts.dev uses **provider-agnostic OAuth** with JWT tokens:
+
+<Steps>
+  <Step title="OAuth Login Initiation">
+    Client requests login for a provider:
+    ```bash
+    GET /v1/auth/{provider}/login
+    # Supported: github, google
+    ```
+    
+    Server redirects to OAuth provider's authorization page.
+  </Step>
+
+  <Step title="OAuth Callback">
+    Provider redirects back with authorization code:
+    ```bash
+    GET /v1/auth/{provider}/callback?code=...
+    ```
+    
+    Server exchanges code for access token and fetches user profile.
+  </Step>
+
+  <Step title="User Creation or Linking">
+    - **New user**: Creates entry in `users` table
+    - **Existing identity**: Links to existing user via `user_identities`
+    - **Auto-linking**: Only enabled when provider email is verified
+  </Step>
+
+  <Step title="JWT Token Issuance">
+    Server issues a signed JWT token:
+    ```json
+    {
+      "token": "eyJhbGciOiJIUzI1NiIs...",
+      "user": {
+        "id": "user_123",
+        "username": "alice",
+        "email": "alice@example.com"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+### Database Schema
+
+```sql
+-- Users table
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    username VARCHAR UNIQUE,
+    email VARCHAR,
+    created_at TIMESTAMP
+);
+
+-- Provider identities (OAuth linking)
+CREATE TABLE user_identities (
+    id UUID PRIMARY KEY,
+    user_id UUID REFERENCES users(id),
+    provider VARCHAR,  -- 'github' or 'google'
+    provider_id VARCHAR,
+    UNIQUE(provider, provider_id)
+);
+```
+
+## Storage Architecture
+
+Prompt tarballs are stored in **Cloudflare R2** (S3-compatible object storage):
+
+### Upload Flow
+
+<Steps>
+  <Step title="Client uploads tarball">
+    ```bash
+    POST /v1/prompts/:id/versions
+    Content-Type: multipart/form-data
+    ```
+  </Step>
+
+  <Step title="API uploads to R2">
+    ```go
+    key := fmt.Sprintf("%s/%s/%s.tar.gz", owner, name, version)
+    storageClient.Upload(ctx, key, file, size, "application/gzip")
+    ```
+  </Step>
+
+  <Step title="Metadata stored in database">
+    ```sql
+    INSERT INTO prompt_versions (id, prompt_id, version, tarball_url)
+    VALUES ('...', '...', '1.0.0', 's3://bucket/owner/name/1.0.0.tar.gz');
+    ```
+  </Step>
+</Steps>
+
+### Download Flow
+
+<Steps>
+  <Step title="Client requests download">
+    ```bash
+    GET /v1/prompts/:owner/:name/versions/:version/download
+    ```
+  </Step>
+
+  <Step title="API generates presigned URL">
+    ```go
+    url, err := storageClient.GetPresignedURL(ctx, key, 15*time.Minute)
+    ```
+  </Step>
+
+  <Step title="API redirects to presigned URL">
+    ```bash
+    HTTP 302 Found
+    Location: https://bucket.r2.cloudflarestorage.com/...?signature=...
+    ```
+  </Step>
+
+  <Step title="Client downloads from R2 directly">
+    Download happens directly from R2, reducing API load.
+  </Step>
+</Steps>
+
+<Note>
+Presigned URLs expire after 15 minutes for security.
+</Note>
+
+## Module Boundaries
+
+The architecture enforces clear boundaries:
+
+### Dependency Rules
+
+1. **cmd/api composes concrete implementations**
+   ```go
+   // cmd/api/main.go
+   usersRepo := users.NewGORMRepository(gdb)
+   authService := auth.NewAuthService(cfg, usersRepo, identitiesRepo)
+   authHandler := auth.NewHandler(authService, cfg)
+   ```
+
+2. **Modules interact through interfaces**
+   ```go
+   // Handler depends on interface, not concrete implementation
+   type Handler struct {
+       repo Repository  // interface
+   }
+   ```
+
+3. **Shared response format in server package**
+   ```go
+   // All modules use common response helpers
+   server.RespondJSON(c, status, data)
+   server.RespondError(c, status, code, message)
+   server.RespondValidationError(c, fieldErrors)
+   ```
+
+<Warning>
+Modules should NOT import each other's concrete implementations. Use interfaces for dependencies.
+</Warning>
+
+## Error Handling
+
+All API errors use a standard envelope format:
+
+```json
+{
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request parameters",
+    "fields": {
+      "name": "must match ^[a-z0-9-]+$"
+    }
+  }
+}
+```
+
+Common error codes:
+- `VALIDATION_ERROR` - Invalid request data
+- `UNAUTHORIZED` - Missing or invalid authentication
+- `NOT_FOUND` - Resource not found
+- `CONFLICT` - Resource already exists
+- `INTERNAL_ERROR` - Server error
+
+## Middleware Stack
+
+The API server uses these middleware in order:
+
+```go
+r.Use(requestIDMiddleware())     // 1. Assign request ID
+r.Use(recoveryMiddleware())       // 2. Panic recovery
+r.Use(loggerMiddleware(logger))   // 3. Structured logging
+r.Use(corsMiddleware())           // 4. CORS headers
+```
+
+Protected routes add authentication:
+```go
+authorized.Use(authMiddleware.Authenticate())
+```
+
+## Database Migrations
+
+Migrations are SQL files in the `migrations/` directory:
+
+```sql
+-- 001_create_users.up.sql
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+Migrations run automatically on API startup using the migration runner in `internal/db`.
+
+<Note>
+Migrations should be idempotent - safe to run multiple times without side effects.
+</Note>

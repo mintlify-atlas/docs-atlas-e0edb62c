@@ -1,0 +1,322 @@
+---
+title: Local Development Setup
+description: Set up your local development environment for Prompts.dev
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Go 1.25+** - The API server and CLI are written in Go
+- **PostgreSQL** - For local database development
+- **Docker & Docker Compose** - For running local infrastructure
+- **Cloudflare R2 credentials** - For tarball storage (or S3-compatible alternative)
+- **OAuth credentials** - GitHub and/or Google OAuth app credentials
+
+## Quick Start
+
+<Steps>
+  <Step title="Clone and navigate to the repository">
+    ```bash
+    git clone https://github.com/your-org/prompts.git
+    cd prompts
+    ```
+  </Step>
+
+  <Step title="Copy environment configuration">
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Open `.env` and fill in the required values:
+
+    <CodeGroup>
+    ```bash Database
+    DATABASE_URL=postgres://prompt:prompt@localhost:5432/promptsdev?sslmode=disable
+    ```
+
+    ```bash JWT Secret
+    JWT_SECRET=your-long-random-secret-string-here
+    ```
+
+    ```bash Cloudflare R2
+    R2_ACCOUNT_ID=your-r2-account-id
+    R2_BUCKET=prompts-tarballs
+    R2_ACCESS_KEY_ID=your-access-key
+    R2_SECRET_ACCESS_KEY=your-secret-key
+    ```
+
+    ```bash OAuth (GitHub)
+    GITHUB_CLIENT_ID=your-github-client-id
+    GITHUB_CLIENT_SECRET=your-github-client-secret
+    GITHUB_REDIRECT_URL=http://localhost:8080/v1/auth/github/callback
+    ```
+
+    ```bash OAuth (Google)
+    GOOGLE_CLIENT_ID=your-google-client-id
+    GOOGLE_CLIENT_SECRET=your-google-client-secret
+    GOOGLE_REDIRECT_URL=http://localhost:8080/v1/auth/google/callback
+    ```
+    </CodeGroup>
+
+    <Note>
+    You can configure one or both OAuth providers. At least one is required for authentication.
+    </Note>
+  </Step>
+
+  <Step title="Install Go dependencies">
+    ```bash
+    go mod tidy
+    ```
+  </Step>
+
+  <Step title="Start local PostgreSQL">
+    ```bash
+    make up
+    ```
+
+    This starts PostgreSQL using Docker Compose with these default credentials:
+    - **User**: `prompt`
+    - **Password**: `prompt`
+    - **Database**: `promptsdev`
+    - **Port**: `5432`
+
+    <Note>
+    The database container includes a health check that waits for PostgreSQL to be ready.
+    </Note>
+  </Step>
+
+  <Step title="Run the API server">
+    ```bash
+    make api
+    ```
+
+    The API will:
+    - Start on `http://localhost:8080`
+    - Automatically run database migrations on startup
+    - Serve all routes under `/v1`
+
+    You should see log output like:
+    ```
+    api: config loaded (env=development, port=8080)
+    api: database connection established
+    api: migrations completed
+    ```
+  </Step>
+</Steps>
+
+## Makefile Commands
+
+The project includes a comprehensive Makefile for common development tasks:
+
+### Infrastructure
+
+<CodeGroup>
+```bash Start Services
+make up
+# Starts local PostgreSQL in Docker
+```
+
+```bash Stop Services
+make down
+# Stops all Docker Compose services
+```
+
+```bash Reset Database
+make reset
+# Stops services and removes volumes (fresh start)
+```
+</CodeGroup>
+
+### Development
+
+<CodeGroup>
+```bash Run API
+make api
+# Runs the API server with auto-migrations
+```
+
+```bash Run CLI
+make cli
+# Shows CLI help (loads .env if present)
+```
+
+```bash Build CLI Binary
+make build-cli
+# Builds CLI binary to ./bin/prompt
+```
+
+```bash Install CLI
+make install-cli
+# Installs CLI to $GOPATH/bin
+```
+</CodeGroup>
+
+### Testing & Quality
+
+<CodeGroup>
+```bash Run Tests
+make test
+# Runs all Go tests
+```
+
+```bash Format Code
+make fmt
+# Formats all Go code with gofmt
+```
+
+```bash Tidy Dependencies
+make tidy
+# Cleans up go.mod and go.sum
+```
+
+```bash Full Check
+make check
+# Runs fmt, test, and OpenAPI validation
+```
+</CodeGroup>
+
+## Using the CLI Locally
+
+Run the CLI directly with Go:
+
+```bash
+go run ./cmd/cli --help
+```
+
+Common CLI operations:
+
+<CodeGroup>
+```bash Login
+go run ./cmd/cli login --provider github
+```
+
+```bash Initialize Prompt
+go run ./cmd/cli init my-prompt
+```
+
+```bash Publish Prompt
+go run ./cmd/cli publish
+```
+</CodeGroup>
+
+<Note>
+The CLI stores authentication tokens in `~/.prompts/config.json` after successful login.
+</Note>
+
+## Database Migrations
+
+Migrations are located in the `migrations/` directory and are automatically applied when the API server starts.
+
+**Manual migration run:**
+```bash
+go run ./cmd/api
+# Migrations run automatically on startup
+```
+
+<Warning>
+Migrations are executed on every API startup. Ensure your migration files are idempotent.
+</Warning>
+
+## Docker Compose Configuration
+
+The `docker-compose.yml` defines the local PostgreSQL service:
+
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: prompts-postgres
+    environment:
+      POSTGRES_USER: prompt
+      POSTGRES_PASSWORD: prompt
+      POSTGRES_DB: promptsdev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+```
+
+Data is persisted in the `postgres_data` Docker volume. Use `make reset` to clear it.
+
+## Environment Variables Reference
+
+All available environment variables from `.env.example`:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PORT` | No | `8080` | API server port |
+| `APP_ENV` | No | `development` | Application environment |
+| `DATABASE_URL` | Yes | - | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | - | Secret for signing JWT tokens |
+| `JWT_EXPIRY_HOURS` | No | `720` | JWT token expiry (30 days) |
+| `GITHUB_CLIENT_ID` | Conditional | - | GitHub OAuth app client ID |
+| `GITHUB_CLIENT_SECRET` | Conditional | - | GitHub OAuth app secret |
+| `GITHUB_REDIRECT_URL` | Conditional | - | GitHub OAuth callback URL |
+| `GOOGLE_CLIENT_ID` | Conditional | - | Google OAuth app client ID |
+| `GOOGLE_CLIENT_SECRET` | Conditional | - | Google OAuth app secret |
+| `GOOGLE_REDIRECT_URL` | Conditional | - | Google OAuth callback URL |
+| `R2_ACCOUNT_ID` | Yes | - | Cloudflare R2 account ID |
+| `R2_BUCKET` | Yes | `prompts-tarballs` | R2 bucket name |
+| `R2_ACCESS_KEY_ID` | Yes | - | R2 access key |
+| `R2_SECRET_ACCESS_KEY` | Yes | - | R2 secret access key |
+| `CLI_OAUTH_PORT` | No | `9876` | Local port for CLI OAuth callback |
+
+<Note>
+At least one OAuth provider (GitHub or Google) must be configured for authentication to work.
+</Note>
+
+## Troubleshooting
+
+### Migration Errors
+
+**Problem:** Database migration fails on startup
+
+**Solution:**
+- Verify `DATABASE_URL` is correct
+- Check PostgreSQL is running: `docker ps`
+- Ensure database user has proper permissions
+- Check migration files in `migrations/` directory
+
+### OAuth Provider Errors
+
+**Problem:** "OAuth provider unsupported" error
+
+**Solution:**
+- Ensure provider credentials are configured in `.env`
+- Verify redirect URLs match your OAuth app configuration
+- Check that at least one provider (GitHub or Google) is fully configured
+
+### R2 Client Initialization Fails
+
+**Problem:** R2 storage client fails to initialize
+
+**Solution:**
+- Verify all R2 credentials: `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`
+- Ensure the bucket exists in your R2 account
+- Check that API keys have proper permissions
+
+### 401 Unauthorized Responses
+
+**Problem:** CLI requests return 401 errors
+
+**Solution:**
+- Confirm you've logged in: `go run ./cmd/cli login --provider github`
+- Check JWT token exists in `~/.prompts/config.json`
+- Verify `JWT_SECRET` is consistent between logins
+- Token may have expired (default: 30 days)
+
+### Port Already in Use
+
+**Problem:** "address already in use" error
+
+**Solution:**
+```bash
+# Check what's using port 8080
+lsof -i :8080
+
+# Change port in .env
+PORT=8081
+```

@@ -1,0 +1,475 @@
+---
+title: Contributing Guide
+description: Learn how to contribute to the Prompts.dev project
+---
+
+## Getting Started
+
+We welcome contributions to Prompts.dev! This guide will help you get started with contributing code, documentation, or bug reports.
+
+### Prerequisites
+
+Before contributing, make sure you have:
+
+- Completed the [local development setup](/development/local-setup)
+- Read the [architecture overview](/development/architecture)
+- Familiarized yourself with the codebase structure
+
+## Contribution Workflow
+
+<Steps>
+  <Step title="Create a branch from main">
+    ```bash
+    git checkout main
+    git pull origin main
+    git checkout -b feature/your-feature-name
+    ```
+
+    Branch naming conventions:
+    - `feature/` - New features
+    - `fix/` - Bug fixes
+    - `docs/` - Documentation updates
+    - `refactor/` - Code refactoring
+  </Step>
+
+  <Step title="Make your changes">
+    - Keep changes focused and atomic
+    - Write clear, self-documenting code
+    - Add tests for new functionality
+    - Update documentation when behavior changes
+  </Step>
+
+  <Step title="Run quality checks">
+    ```bash
+    make check
+    ```
+
+    This runs:
+    - `gofmt` - Code formatting
+    - `go test` - All tests
+    - OpenAPI validation
+  </Step>
+
+  <Step title="Commit your changes">
+    ```bash
+    git add .
+    git commit -m "Add feature: brief description"
+    ```
+
+    See [commit style](#commit-style) below for guidelines.
+  </Step>
+
+  <Step title="Push and create a pull request">
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+
+    Then open a pull request on GitHub with:
+    - Clear description of changes
+    - Link to related issues
+    - Screenshots (if UI changes)
+    - Testing notes
+  </Step>
+</Steps>
+
+## Pull Request Guidelines
+
+### Keep PRs Focused and Small
+
+<Note>
+Smaller pull requests are easier to review and merge faster. Aim for PRs that solve one problem or add one feature.
+</Note>
+
+**Good PR examples:**
+- Add search endpoint for prompts
+- Fix JWT token expiry validation
+- Update API documentation for versions endpoint
+
+**Avoid:**
+- Mixing multiple unrelated changes
+- Large refactors combined with new features
+- Reformatting entire files alongside logic changes
+
+### Include Tests or Verification Notes
+
+Every PR should include one of:
+
+1. **Automated tests** (preferred)
+   ```go
+   func TestPromptCreate(t *testing.T) {
+       // Test implementation
+   }
+   ```
+
+2. **Manual testing steps**
+   ```markdown
+   ## Testing
+   1. Start API server
+   2. Run: `curl -X POST http://localhost:8080/v1/prompts ...`
+   3. Verify response contains created prompt
+   ```
+
+3. **Verification notes** (for docs/config changes)
+   ```markdown
+   ## Verification
+   - Rendered documentation locally
+   - Verified all links work
+   - Checked code examples run successfully
+   ```
+
+### Update Documentation
+
+Update documentation when:
+
+- API contracts change (update `docs/api/openapi.yaml`)
+- New features are added (update relevant `.md` files)
+- Configuration options change (update `.env.example` and docs)
+- Architecture changes (update `docs/architecture.md`)
+
+<Warning>
+PRs that change API behavior **must** include OpenAPI spec updates in the same commit.
+</Warning>
+
+## Code Quality Standards
+
+### Required Pre-PR Checks
+
+Run these commands before opening a pull request:
+
+<CodeGroup>
+```bash Format Code
+gofmt -w ./...
+# or
+make fmt
+```
+
+```bash Run Tests
+go test ./...
+# or
+make test
+```
+
+```bash Run All Checks
+make check
+# Runs: fmt, test, openapi-validate
+```
+</CodeGroup>
+
+### Code Formatting
+
+We use **gofmt** for consistent Go code formatting:
+
+```bash
+# Format all Go files
+gofmt -w $(go list -f '{{.Dir}}' ./...)
+```
+
+<Note>
+All Go code must be formatted with `gofmt`. PRs with unformatted code will not be merged.
+</Note>
+
+### Testing Guidelines
+
+**Write tests for:**
+- New business logic
+- Bug fixes (regression tests)
+- Complex validation logic
+- Repository methods
+
+**Test example:**
+```go
+func TestPromptRepository_Create(t *testing.T) {
+    db := setupTestDB(t)
+    repo := prompts.NewGORMRepository(db)
+    
+    prompt := &prompts.Prompt{
+        Name:        "test-prompt",
+        Description: "A test prompt",
+        OwnerID:     "user_123",
+    }
+    
+    created, err := repo.Create(context.Background(), prompt, []string{"tag1"})
+    assert.NoError(t, err)
+    assert.NotEmpty(t, created.ID)
+    assert.Equal(t, "test-prompt", created.Name)
+}
+```
+
+## API Change Policy
+
+### OpenAPI Specification Updates
+
+All API changes must update `docs/api/openapi.yaml` in the same PR.
+
+**Example scenario:**
+Adding a new field to the prompt response:
+
+<CodeGroup>
+```go Code Change
+// internal/prompts/model.go
+type Prompt struct {
+    ID          string    `json:"id"`
+    Name        string    `json:"name"`
+    Description string    `json:"description"`
+    Tags        []string  `json:"tags"` // NEW FIELD
+}
+```
+
+```yaml OpenAPI Update
+# docs/api/openapi.yaml
+Prompt:
+  type: object
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    description:
+      type: string
+    tags:  # NEW FIELD
+      type: array
+      items:
+        type: string
+```
+</CodeGroup>
+
+### Error Response Consistency
+
+Error envelopes must remain consistent with `internal/server/respond.go`:
+
+```json
+{
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable error message"
+  }
+}
+```
+
+**Never** introduce custom error formats in individual handlers.
+
+### Versioning
+
+Keep all routes under `/v1` unless introducing a breaking API version:
+
+```go
+// ✓ Good
+v1.GET("/prompts", handler.List)
+v1.POST("/prompts", handler.Create)
+
+// ✗ Avoid (unless introducing v2)
+v2.GET("/prompts", handler.ListV2)
+```
+
+## Commit Style
+
+### Commit Message Format
+
+Use **concise, imperative** commit messages:
+
+<CodeGroup>
+```bash Good Examples
+Add search endpoint for prompts
+Fix JWT token expiry validation
+Update OpenAPI spec for versions endpoint
+Refactor storage client interface
+```
+
+```bash Avoid
+Added some stuff
+Fixed bug
+WIP
+Update
+```
+</CodeGroup>
+
+### Explain the "Why", Not Just the "What"
+
+Commit messages should explain the motivation:
+
+**Good:**
+```
+Add rate limiting to upload endpoint
+
+Prevents abuse by limiting users to 10 uploads per minute.
+Rejected requests return 429 with Retry-After header.
+```
+
+**Less helpful:**
+```
+Add rate limiting
+```
+
+### Atomic Commits
+
+Each commit should be a logical unit:
+
+- ✓ One commit per feature/fix
+- ✓ All tests pass at each commit
+- ✗ Multiple unrelated changes in one commit
+- ✗ "Fix previous commit" commits (use `git commit --amend` instead)
+
+## Documentation Style
+
+### Writing Documentation
+
+When contributing to documentation:
+
+1. **Prefer short sections with concrete examples**
+   ```markdown
+   ## Upload a Prompt
+   
+   ```bash
+   curl -X POST http://localhost:8080/v1/prompts \
+     -H "Authorization: Bearer YOUR_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "my-prompt", "description": "A test prompt"}'
+   ```
+   ```
+
+2. **Use real request/response examples**
+   Show actual API responses, not placeholders
+
+3. **Keep docs aligned with implementation**
+   Documentation should reflect current behavior, not planned features
+
+4. **Use clear headings and structure**
+   - Use `##` for main sections
+   - Use `###` for subsections
+   - Use code blocks with language hints
+
+## Code Review Process
+
+### What Reviewers Look For
+
+1. **Code Quality**
+   - Follows Go best practices
+   - Properly formatted with `gofmt`
+   - Clear variable and function names
+
+2. **Testing**
+   - Tests cover new functionality
+   - Edge cases are handled
+   - Tests are readable and maintainable
+
+3. **Documentation**
+   - API changes include OpenAPI updates
+   - README or docs updated if needed
+   - Code comments for complex logic
+
+4. **Architecture**
+   - Follows existing patterns
+   - Respects module boundaries
+   - Uses interfaces for dependencies
+
+### Responding to Feedback
+
+- Address all reviewer comments
+- Ask questions if feedback is unclear
+- Push new commits (don't force-push during review)
+- Mark conversations as resolved when addressed
+
+## Common Tasks
+
+### Adding a New API Endpoint
+
+<Steps>
+  <Step title="Define the route in cmd/api/main.go">
+    ```go
+    v1.GET("/prompts/:id", promptsHandler.Get)
+    ```
+  </Step>
+
+  <Step title="Implement the handler">
+    ```go
+    // internal/prompts/handler.go
+    func (h *Handler) Get(c *gin.Context) {
+        id := c.Param("id")
+        // Implementation...
+    }
+    ```
+  </Step>
+
+  <Step title="Add repository method if needed">
+    ```go
+    // internal/prompts/repository.go
+    func (r *GORMRepository) FindByID(ctx context.Context, id string) (*Prompt, error) {
+        // Implementation...
+    }
+    ```
+  </Step>
+
+  <Step title="Update OpenAPI spec">
+    ```yaml
+    # docs/api/openapi.yaml
+    /prompts/{id}:
+      get:
+        summary: Get prompt by ID
+        # ...
+    ```
+  </Step>
+
+  <Step title="Add tests">
+    ```go
+    func TestHandler_Get(t *testing.T) {
+        // Test implementation...
+    }
+    ```
+  </Step>
+</Steps>
+
+### Adding a Database Migration
+
+<Steps>
+  <Step title="Create migration file">
+    ```bash
+    touch migrations/003_add_column.up.sql
+    touch migrations/003_add_column.down.sql
+    ```
+  </Step>
+
+  <Step title="Write the migration">
+    ```sql
+    -- migrations/003_add_column.up.sql
+    ALTER TABLE prompts ADD COLUMN visibility VARCHAR(20) DEFAULT 'public';
+    ```
+  </Step>
+
+  <Step title="Update the model">
+    ```go
+    // internal/prompts/model.go
+    type Prompt struct {
+        // ...
+        Visibility string `gorm:"default:public"`
+    }
+    ```
+  </Step>
+
+  <Step title="Test the migration">
+    ```bash
+    make reset  # Clear database
+    make api    # Migrations run automatically
+    ```
+  </Step>
+</Steps>
+
+## Getting Help
+
+### Questions or Issues?
+
+- **General questions**: Open a discussion on GitHub
+- **Bug reports**: Open an issue with reproduction steps
+- **Feature requests**: Open an issue with use case description
+- **Security issues**: Email security@prompts.dev (do not open public issues)
+
+### Resources
+
+- [Local Development Setup](/development/local-setup)
+- [Architecture Overview](/development/architecture)
+- [API Documentation](/api-reference/introduction)
+- [Repository Structure](https://github.com/your-org/prompts/blob/main/docs/repository-structure.md)
+
+## License
+
+By contributing to Prompts.dev, you agree that your contributions will be licensed under the same license as the project.

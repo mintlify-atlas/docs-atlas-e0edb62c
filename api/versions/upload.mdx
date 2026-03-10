@@ -1,0 +1,145 @@
+---
+title: "Upload Version"
+api: "POST /v1/prompts/:id/versions"
+description: "Upload a new version of a prompt as a tarball"
+---
+
+## Overview
+
+Upload a new version of your prompt by providing a semver version number and a tarball file containing your prompt files. The tarball is stored in object storage (R2/S3) and associated with the prompt.
+
+## Authentication
+
+This endpoint requires authentication. You must be the owner of the prompt to upload versions.
+
+## Request
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the prompt
+</ParamField>
+
+### Form Data (multipart/form-data)
+
+<ParamField body="version" type="string" required>
+  Semantic version number in the format `MAJOR.MINOR.PATCH` (e.g., `1.0.0`, `2.3.15`)
+  
+  Must match the regex pattern: `^\d+\.\d+\.\d+$`
+</ParamField>
+
+<ParamField body="tarball" type="file" required>
+  A gzip-compressed tarball (`.tar.gz`) containing the prompt files
+  
+  - Maximum file size: 10 MB
+  - Content-Type: `application/gzip`
+  - File extension should be `.tar.gz`
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  Unique identifier for the version (UUID)
+</ResponseField>
+
+<ResponseField name="prompt_id" type="string">
+  The ID of the prompt this version belongs to
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  The semantic version number
+</ResponseField>
+
+<ResponseField name="tarball_url" type="string">
+  Storage key/path for the uploaded tarball
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of when the version was created
+</ResponseField>
+
+## Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.prompts.dev/v1/prompts/abc123/versions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "version=1.0.0" \
+  -F "tarball=@./prompt.tar.gz"
+```
+
+```bash Create Tarball
+# Create a tarball from your prompt directory
+tar -czf prompt.tar.gz -C ./my-prompt .
+
+# Upload the tarball
+curl -X POST https://api.prompts.dev/v1/prompts/abc123/versions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "version=1.0.0" \
+  -F "tarball=@./prompt.tar.gz"
+```
+
+</CodeGroup>
+
+### Response Example
+
+```json 201 Created
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "prompt_id": "abc123",
+  "version": "1.0.0",
+  "tarball_url": "user123/my-prompt/1.0.0.tar.gz",
+  "created_at": "2026-03-10T15:30:00Z"
+}
+```
+
+## Error Responses
+
+<ResponseField name="401 Unauthorized" type="error">
+  Authentication required or invalid credentials
+</ResponseField>
+
+<ResponseField name="403 Forbidden" type="error">
+  You are not the owner of this prompt
+</ResponseField>
+
+<ResponseField name="404 Not Found" type="error">
+  Prompt with the specified ID does not exist
+</ResponseField>
+
+<ResponseField name="409 Conflict" type="error">
+  A version with this version number already exists for this prompt
+</ResponseField>
+
+<ResponseField name="413 Payload Too Large" type="error">
+  Tarball exceeds the 10 MB size limit
+</ResponseField>
+
+<ResponseField name="422 Validation Error" type="error">
+  Invalid version format or missing required fields
+  
+  ```json
+  {
+    "error": "VALIDATION_ERROR",
+    "message": "validation failed",
+    "details": {
+      "version": "must match ^\\d+\\.\\d+\\.\\d+$"
+    }
+  }
+  ```
+</ResponseField>
+
+## Notes
+
+<Note>
+  **Version Immutability**: Once a version is uploaded, it cannot be modified or overwritten. You must create a new version with a different version number.
+</Note>
+
+<Note>
+  **Tarball Format**: The tarball should contain all files needed for your prompt. The storage key follows the pattern: `{owner_id}/{prompt_name}/{version}.tar.gz`
+</Note>
+
+<Note>
+  **Size Limits**: The maximum tarball size is 10 MB. Ensure your prompt files are within this limit before uploading.
+</Note>

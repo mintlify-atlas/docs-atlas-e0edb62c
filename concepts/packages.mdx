@@ -1,0 +1,239 @@
+---
+title: Packages
+description: Understanding prompt package structure and distribution
+---
+
+## What is a Prompt Package?
+
+A **prompt package** is a standardized directory structure containing prompt metadata, content, and documentation. Packages are the unit of distribution in Prompts.dev.
+
+Think of prompt packages like npm packages: they follow a consistent structure, can be versioned, and are distributed through a central registry.
+
+## Package Structure
+
+Every prompt package has a standard structure:
+
+```text
+landing-page-writer/
+├── prompt.yaml    # Required: Package metadata
+├── prompt.md      # Required: Prompt content
+└── README.md      # Optional: Documentation
+```
+
+### Required Files
+
+<Card title="prompt.yaml" icon="file-code">
+  Contains package metadata, version info, input variables, and tags.
+</Card>
+
+<Card title="prompt.md" icon="file-text">
+  The actual prompt content with template variables like `{{product}}`.
+</Card>
+
+### Optional Files
+
+<Card title="README.md" icon="book">
+  Documentation for users explaining how to use the prompt and what it does.
+</Card>
+
+## prompt.yaml Schema
+
+The `prompt.yaml` file defines the package configuration:
+
+```yaml
+name: landing-page-writer
+description: Generates landing page copy
+version: 1.0.0
+author: topboy
+
+inputs:
+  - name: product
+    required: true
+  - name: audience
+    required: false
+
+tags:
+  - marketing
+  - writing
+```
+
+### Schema Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Package name (must match prompt name) |
+| `description` | string | Yes | Short description of the prompt |
+| `version` | string | Yes | Semantic version (e.g., 1.0.0) |
+| `author` | string | Yes | Author username |
+| `inputs` | array | No | List of template variables |
+| `tags` | array | No | Searchable tags for discovery |
+
+<Info>
+The `name` field must match the prompt name in the registry and be unique per owner.
+</Info>
+
+### Input Variables
+
+The `inputs` array defines template variables used in `prompt.md`:
+
+```yaml
+inputs:
+  - name: product
+    required: true
+  - name: audience
+    required: false
+```
+
+- **name**: Variable name (used as `{{product}}` in prompt.md)
+- **required**: Whether the CLI should enforce this variable
+
+## prompt.md Format
+
+The `prompt.md` file contains the actual prompt content:
+
+```markdown
+You are a senior marketing copywriter.
+
+Write a landing page for {{product}}.
+
+Target audience: {{audience}}
+
+Include sections:
+- Hero
+- Features
+- Benefits
+- CTA
+```
+
+<Note>
+Template variables use double curly braces: `{{variable_name}}`
+</Note>
+
+When running the prompt, the CLI replaces these variables with values provided via command-line arguments.
+
+## Package Distribution
+
+Prompt packages are distributed as **compressed tarballs** (`.tar.gz` files):
+
+### Tarball Creation
+
+When you publish a prompt, the CLI:
+
+1. Validates the package structure
+2. Creates a tarball containing all package files
+3. Uploads the tarball to object storage (S3-compatible)
+4. Registers the version in the database
+
+The tarball creation logic is implemented in `internal/versions/tarball.go`:
+
+```go
+func CreateTarball(sourceDir string) (io.ReadCloser, int64, error)
+```
+
+This function:
+- Walks the source directory
+- Creates a gzip-compressed tar archive
+- Includes all files except directories
+- Returns a reader and the tarball size
+
+<Accordion title="View tarball creation flow">
+  ```go
+  // 1. Create gzip writer
+  gw := gzip.NewWriter(&buf)
+  tw := tar.NewWriter(gw)
+  
+  // 2. Walk directory and add files
+  filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+      // Add file to tar archive
+      tw.WriteHeader(hdr)
+      io.Copy(tw, f)
+  })
+  
+  // 3. Close writers and return tarball
+  tw.Close()
+  gw.Close()
+  ```
+</Accordion>
+
+### Storage Path
+
+Tarballs are stored in object storage using this path structure:
+
+```text
+prompts/{owner}/{name}/{version}.tar.gz
+```
+
+Example:
+```text
+prompts/topboy/landing-page-writer/1.0.0.tar.gz
+```
+
+## Installing Packages
+
+When you install a prompt package:
+
+```bash
+prompt install topboy/landing-page-writer
+```
+
+The CLI:
+
+1. Fetches the latest version metadata from the API
+2. Downloads the tarball from object storage
+3. Extracts the tarball to `.prompts/landing-page-writer/`
+4. Records the download event
+
+<Info>
+Packages are installed locally in the `.prompts/` directory in your project.
+</Info>
+
+## Creating a Package
+
+Initialize a new package using the CLI:
+
+```bash
+prompt init my-prompt
+```
+
+This creates the standard structure with template files:
+
+```text
+my-prompt/
+├── prompt.yaml    # Pre-filled with defaults
+├── prompt.md      # Template prompt
+└── README.md      # Basic documentation
+```
+
+Edit these files, then publish:
+
+```bash
+cd my-prompt
+prompt publish
+```
+
+## Package Security
+
+The system includes security measures for tarball handling:
+
+- **Path validation**: Prevents directory traversal attacks
+- **Size limits**: Enforces maximum tarball size
+- **Content validation**: Ensures required files are present
+
+<Accordion title="Security checks in tarball extraction">
+  ```go
+  // Prevent unsafe paths
+  if strings.Contains(hdr.Name, "..") || strings.HasPrefix(hdr.Name, "/") {
+      return fmt.Errorf("unsafe tar path: %s", hdr.Name)
+  }
+  
+  // Validate extraction target
+  if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)) {
+      return fmt.Errorf("unsafe tar extraction path: %s", hdr.Name)
+  }
+  ```
+</Accordion>
+
+## Related Concepts
+
+- [Prompts](/concepts/prompts) - Learn about prompt metadata and variables
+- [Versions](/concepts/versions) - Understand package versioning

@@ -1,0 +1,95 @@
+---
+title: Introduction
+description: A registry and distribution platform for AI prompts with versioning, publishing, and CLI-based installation.
+---
+
+# Welcome to Prompts.dev
+
+Prompts.dev is a **registry and distribution platform for AI prompts**. Think of it as npm for AI prompts — create, version, publish, install, and share prompts with the developer community.
+
+## Why Prompts.dev?
+
+AI prompts are scattered across documentation, codebases, note apps, and chat history. There's no version control, no sharing mechanism, no discoverability, and no standard format. Developers repeatedly rewrite the same prompts.
+
+Prompts.dev solves this by providing:
+
+<CardGroup cols={2}>
+  <Card title="Version Control" icon="code-branch">
+    Track changes to your prompts over time with semantic versioning
+  </Card>
+  <Card title="Easy Distribution" icon="share-nodes">
+    Publish prompts to a central registry and install them with a single command
+  </Card>
+  <Card title="Discovery" icon="magnifying-glass">
+    Search and explore prompts created by the community
+  </Card>
+  <Card title="Standard Format" icon="file-code">
+    Use a consistent package structure with metadata, variables, and templates
+  </Card>
+</CardGroup>
+
+## Key Features
+
+- **Version-controlled AI prompt storage** — Track and manage prompt versions with semantic versioning
+- **CLI-based publishing and installation** — Simple commands to publish and install prompts
+- **OAuth authentication** — Secure login with GitHub or Google
+- **Package-based distribution** — Prompts are packaged as tarballs with metadata
+- **Search and discovery** — Find prompts by name, description, or tags
+- **Template variable support** — Prompts support variables for dynamic content
+
+## How It Works
+
+<Steps>
+  <Step title="Create a prompt package">
+    Use the CLI to scaffold a prompt package with metadata, template file, and documentation.
+    
+    ```bash
+    prompt init my-landing-page-writer
+    ```
+  </Step>
+  
+  <Step title="Publish to the registry">
+    Login with GitHub or Google, then publish your prompt to the registry.
+    
+    ```bash
+    prompt login
+    prompt publish
+    ```
+  </Step>
+  
+  <Step title="Install and use">
+    Anyone can install your prompt and use it in their projects.
+    
+    ```bash
+    prompt install username/my-landing-page-writer
+    prompt run my-landing-page-writer --var product="AI SaaS"
+    ```
+  </Step>
+</Steps>
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in 5 minutes
+  </Card>
+  <Card title="CLI Commands" icon="terminal" href="/cli/commands">
+    Learn all available CLI commands
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/authentication">
+    Explore the REST API
+  </Card>
+  <Card title="Local Development" icon="laptop-code" href="/development/local-setup">
+    Set up a local development environment
+  </Card>
+</CardGroup>
+
+## Platform Components
+
+Prompts.dev consists of three main components:
+
+1. **API Server** — A Go-based REST API that manages prompts, versions, and authentication
+2. **CLI Tool** — A command-line interface for publishing, installing, and running prompts
+3. **Object Storage** — Prompt packages are stored as tarballs in S3-compatible storage
+
+All components work together to provide a seamless experience for creating, sharing, and using AI prompts.

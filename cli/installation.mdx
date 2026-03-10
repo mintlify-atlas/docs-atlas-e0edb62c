@@ -1,0 +1,130 @@
+---
+title: 'Installation'
+description: 'Install the Prompts.dev CLI to manage prompt packages from your terminal'
+---
+
+The Prompts.dev CLI provides a complete toolkit for creating, publishing, and managing prompt packages. Choose the installation method that works best for your workflow.
+
+## Prerequisites
+
+- Go 1.25.0 or higher (for `go install` or building from source)
+- Git (for cloning the repository)
+
+## Installation Methods
+
+<Steps>
+  <Step title="Using go install">
+    The quickest way to install the CLI if you have Go installed:
+
+    ```bash
+    go install github.com/topboyasante/prompts/cmd/cli@latest
+    ```
+
+    This installs the binary as `cli` in your `$GOPATH/bin` directory. Make sure `$GOPATH/bin` is in your `PATH`.
+  </Step>
+
+  <Step title="Build from source">
+    Clone the repository and build the CLI binary:
+
+    <CodeGroup>
+      ```bash Build CLI
+      git clone https://github.com/topboyasante/prompts.git
+      cd prompts
+      make build-cli
+      ```
+
+      ```bash Install to GOPATH
+      make install-cli
+      ```
+    </CodeGroup>
+
+    The `make build-cli` command creates a binary at `./bin/prompt`. The `make install-cli` command installs it to your `$GOPATH/bin`.
+
+    <Note>
+      See the [Makefile](cmd/cli/main.go:38) for the exact build commands used.
+    </Note>
+  </Step>
+
+  <Step title="Download prebuilt binary">
+    Download the latest release binary for your platform from the releases page:
+
+    ```bash macOS/Linux
+    # Download and make executable
+    chmod +x prompt
+    sudo mv prompt /usr/local/bin/
+    ```
+
+    ```powershell Windows
+    # Move to a directory in your PATH
+    move prompt.exe C:\Windows\System32\prompt.exe
+    ```
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Confirm the CLI is installed correctly:
+
+```bash
+prompt --help
+```
+
+You should see output similar to:
+
+```
+Prompt registry CLI
+
+Usage:
+  prompt [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  help        Help about any command
+  init        Scaffold a prompt package
+  install     Install prompt package
+  login       Login with OAuth provider
+  publish     Publish current prompt package
+  run         Render prompt with variables
+  search      Search prompts
+
+Flags:
+  -h, --help   help for prompt
+
+Use "prompt [command] --help" for more information about a command.
+```
+
+## Configuration
+
+The CLI stores configuration in `~/.prompts/`:
+
+- `~/.prompts/config.json` - Authentication tokens
+- `~/.prompts/[package-name]/` - Installed prompt packages
+
+<Note>
+  The config directory is created automatically on first run (see [main.go:364-370](cmd/cli/main.go:364)).
+</Note>
+
+## Environment Variables
+
+Configure the CLI behavior with environment variables:
+
+<ParamField path="PROMPTS_API_URL" type="string" default="http://localhost:8080/v1">
+  The base URL for the Prompts.dev API server.
+
+  ```bash
+  export PROMPTS_API_URL=https://api.prompts.dev/v1
+  ```
+</ParamField>
+
+The CLI automatically loads `.env` files from the current directory or any parent directory (see [main.go:60-82](cmd/cli/main.go:60)).
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="CLI Commands" icon="terminal" href="/cli/commands">
+    Learn about all available commands and their options
+  </Card>
+  <Card title="Workflow Guide" icon="diagram-project" href="/cli/workflow">
+    Follow an end-to-end example of creating and publishing prompts
+  </Card>
+</CardGroup>

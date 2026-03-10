@@ -1,0 +1,340 @@
+---
+title: 'CLI Commands'
+description: 'Complete reference for all Prompts.dev CLI commands, flags, and usage examples'
+---
+
+The Prompts.dev CLI provides six core commands for managing prompt packages. Each command is built with [Cobra](https://github.com/spf13/cobra) and includes comprehensive flag support.
+
+## login
+
+Authenticate with the Prompts.dev platform using OAuth.
+
+```bash
+prompt login [flags]
+```
+
+### Flags
+
+<ParamField path="--provider" type="string" default="github">
+  OAuth provider to use for authentication. Supported values: `github`, `google`
+</ParamField>
+
+### How it works
+
+The login command:
+1. Generates a random state parameter for CSRF protection (see [main.go:90-93](cmd/cli/main.go:90))
+2. Starts a local callback server on `127.0.0.1:9876` (see [main.go:110](cmd/cli/main.go:110))
+3. Opens your browser to the OAuth provider's login page (see [main.go:135](cmd/cli/main.go:135))
+4. Receives the authentication token via callback (see [main.go:111-127](cmd/cli/main.go:111))
+5. Stores the token in `~/.prompts/config.json` with `0o600` permissions (see [main.go:395-403](cmd/cli/main.go:395))
+
+### Examples
+
+<CodeGroup>
+  ```bash GitHub (default)
+  prompt login
+  ```
+
+  ```bash Google OAuth
+  prompt login --provider google
+  ```
+</CodeGroup>
+
+### Expected output
+
+```
+Complete login in your browser...
+Logged in successfully
+```
+
+<Note>
+  The login flow times out after 2 minutes (see [main.go:149-151](cmd/cli/main.go:149)).
+</Note>
+
+---
+
+## init
+
+Scaffold a new prompt package with the required file structure.
+
+```bash
+prompt init [name] [flags]
+```
+
+### Arguments
+
+<ParamField path="name" type="string" required>
+  The name of the prompt package to create. This will be used as the directory name.
+</ParamField>
+
+### Flags
+
+<ParamField path="--force" type="boolean" default="false">
+  Overwrite existing files if they already exist
+</ParamField>
+
+### Generated files
+
+The `init` command creates three files (see [main.go:175-179](cmd/cli/main.go:175)):
+
+<Accordion title="prompt.yaml - Package manifest">
+  ```yaml
+  name: my-prompt
+  description: Describe your prompt
+  version: 1.0.0
+  author: 
+  inputs:
+    - name: product
+      required: true
+  tags:
+    - general
+  ```
+
+  Defines metadata, required inputs, and tags for your prompt.
+</Accordion>
+
+<Accordion title="prompt.md - Template content">
+  ```markdown
+  Write a high-quality prompt using {{product}}.
+  ```
+
+  The actual prompt template with variable placeholders using `{{variable}}` syntax.
+</Accordion>
+
+<Accordion title="README.md - Documentation">
+  ```markdown
+  # my-prompt
+
+  Prompt package.
+  ```
+
+  Human-readable documentation for your prompt package.
+</Accordion>
+
+### Examples
+
+<CodeGroup>
+  ```bash Create new prompt
+  prompt init code-reviewer
+  ```
+
+  ```bash Overwrite existing
+  prompt init code-reviewer --force
+  ```
+</CodeGroup>
+
+### Expected output
+
+```
+Initialized prompt package in code-reviewer
+```
+
+---
+
+## publish
+
+Publish the current prompt package to the registry.
+
+```bash
+prompt publish
+```
+
+### Requirements
+
+- Must be run from a directory containing `prompt.yaml`
+- Must be authenticated (run `prompt login` first)
+- Manifest must have valid `name` and `version` fields (see [main.go:417-425](cmd/cli/main.go:417))
+
+### How it works
+
+The publish command:
+1. Loads and validates `prompt.yaml` (see [main.go:205-211](cmd/cli/main.go:205))
+2. Creates the prompt in the registry or finds the existing one (see [main.go:218-224](cmd/cli/main.go:218))
+3. Creates a tarball of the current directory (see [main.go:226-230](cmd/cli/main.go:226))
+4. Uploads the tarball as a new version (see [main.go:236-238](cmd/cli/main.go:236))
+
+### Examples
+
+```bash
+cd my-prompt
+prompt publish
+```
+
+### Expected output
+
+```
+Published my-prompt@1.0.0
+```
+
+<Note>
+  If a prompt with the same name already exists, you'll get an error: `prompt already exists; fetch prompt id and publish a new version` (see [main.go:223](cmd/cli/main.go:223))
+</Note>
+
+---
+
+## install
+
+Install a prompt package from the registry.
+
+```bash
+prompt install [owner/name[@version]]
+```
+
+### Arguments
+
+<ParamField path="owner/name[@version]" type="string" required>
+  The prompt package identifier. Format: `owner/name` or `owner/name@version`
+  
+  - If version is omitted, installs the latest version (see [main.go:270-279](cmd/cli/main.go:270))
+  - Version is fetched from the API if not specified
+</ParamField>
+
+### Installation location
+
+Prompts are installed to `.prompts/[name]/` in the current directory (see [main.go:286](cmd/cli/main.go:286)).
+
+### Examples
+
+<CodeGroup>
+  ```bash Latest version
+  prompt install topboyasante/code-reviewer
+  ```
+
+  ```bash Specific version
+  prompt install topboyasante/code-reviewer@1.2.0
+  ```
+</CodeGroup>
+
+### Expected output
+
+```
+Installed topboyasante/code-reviewer@1.2.0 into .prompts/code-reviewer
+```
+
+---
+
+## run
+
+Render a prompt template with provided variables.
+
+```bash
+prompt run [name] [flags]
+```
+
+### Arguments
+
+<ParamField path="name" type="string" required>
+  The name of the installed prompt to run (from `.prompts/[name]/`)
+</ParamField>
+
+### Flags
+
+<ParamField path="--var" type="key=value" multiple>
+  Template variables to inject. Can be specified multiple times.
+  
+  Required variables are validated against the manifest (see [main.go:318-324](cmd/cli/main.go:318)).
+</ParamField>
+
+### How it works
+
+The run command:
+1. Loads the manifest from `.prompts/[name]/prompt.yaml` (see [main.go:309-312](cmd/cli/main.go:309))
+2. Reads the template from `.prompts/[name]/prompt.md` (see [main.go:313-316](cmd/cli/main.go:313))
+3. Validates all required inputs are provided (see [main.go:318-324](cmd/cli/main.go:318))
+4. Performs simple string replacement: `{{key}}` → value (see [main.go:326-329](cmd/cli/main.go:326))
+5. Prints the rendered prompt to stdout
+
+### Examples
+
+<CodeGroup>
+  ```bash Single variable
+  prompt run code-reviewer --var language=python
+  ```
+
+  ```bash Multiple variables
+  prompt run code-reviewer --var language=python --var style=functional
+  ```
+
+  ```bash Pipe to file
+  prompt run code-reviewer --var language=python > rendered.txt
+  ```
+</CodeGroup>
+
+### Expected output
+
+The rendered prompt text with variables replaced:
+
+```
+Write a high-quality prompt using python.
+```
+
+<Warning>
+  If a required variable is missing, you'll get an error: `missing required --var [name]` (see [main.go:321-323](cmd/cli/main.go:321))
+</Warning>
+
+---
+
+## search
+
+Search for prompts in the registry.
+
+```bash
+prompt search [query]
+```
+
+### Arguments
+
+<ParamField path="query" type="string" required>
+  Search query to find prompts by name, description, or tags
+</ParamField>
+
+### How it works
+
+Results are:
+- Fetched from the API (see [main.go:348](cmd/cli/main.go:348))
+- Sorted alphabetically by name (see [main.go:353](cmd/cli/main.go:353))
+- Displayed in a formatted table (see [main.go:354-359](cmd/cli/main.go:354))
+
+### Examples
+
+```bash
+prompt search "code review"
+```
+
+### Expected output
+
+```
+NAME                    DESCRIPTION
+code-reviewer           AI-powered code review assistant
+go-code-reviewer        Specialized Go code reviewer
+py-code-reviewer        Python code review with best practices
+```
+
+---
+
+## Global behavior
+
+### Environment loading
+
+The CLI automatically loads `.env` files from the current directory or any parent directory (see [main.go:60-82](cmd/cli/main.go:60)).
+
+### Config directory
+
+All commands ensure `~/.prompts/` exists before running (see [main.go:47-49](cmd/cli/main.go:47)).
+
+### Error handling
+
+Errors are written to stderr and exit with code 1 (see [main.go:54-57](cmd/cli/main.go:54)).
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Workflow Guide" icon="diagram-project" href="/cli/workflow">
+    See these commands in action with real-world examples
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Learn about the underlying API used by the CLI
+  </Card>
+</CardGroup>

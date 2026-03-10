@@ -1,0 +1,172 @@
+---
+title: Create Prompt
+api: POST /v1/prompts
+---
+
+Create a new prompt with a name, description, and tags.
+
+<Note>
+  This endpoint requires authentication. Include a valid API token in the `Authorization` header.
+</Note>
+
+## Request
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for authentication
+</ParamField>
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/json`
+</ParamField>
+
+### Body
+
+<ParamField body="name" type="string" required>
+  The unique name for the prompt. Must match the pattern `^[a-z0-9-]+$` (lowercase letters, numbers, and hyphens only).
+</ParamField>
+
+<ParamField body="description" type="string">
+  A description of what the prompt does.
+</ParamField>
+
+<ParamField body="tags" type="string[]">
+  An array of tags to categorize the prompt.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  The unique identifier (UUID) for the created prompt.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the prompt.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  The description of the prompt.
+</ResponseField>
+
+<ResponseField name="owner_id" type="string">
+  The UUID of the user who created the prompt.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of when the prompt was created.
+</ResponseField>
+
+<ResponseField name="owner_username" type="string">
+  The username of the prompt owner (if available).
+</ResponseField>
+
+<ResponseField name="tags" type="string[]">
+  Array of tags associated with the prompt.
+</ResponseField>
+
+## Examples
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.prompts.dev/v1/prompts \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "code-review-assistant",
+    "description": "An AI assistant that helps review code for best practices",
+    "tags": ["development", "code-review", "automation"]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.prompts.dev/v1/prompts', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'code-review-assistant',
+    description: 'An AI assistant that helps review code for best practices',
+    tags: ['development', 'code-review', 'automation']
+  })
+});
+
+const prompt = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.prompts.dev/v1/prompts',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN',
+        'Content-Type': 'application/json'
+    },
+    json={
+        'name': 'code-review-assistant',
+        'description': 'An AI assistant that helps review code for best practices',
+        'tags': ['development', 'code-review', 'automation']
+    }
+)
+
+prompt = response.json()
+```
+
+</CodeGroup>
+
+### Response Example
+
+```json 201 Created
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "code-review-assistant",
+  "description": "An AI assistant that helps review code for best practices",
+  "owner_id": "123e4567-e89b-12d3-a456-426614174000",
+  "created_at": "2026-03-10T14:30:00Z",
+  "tags": ["development", "code-review", "automation"]
+}
+```
+
+## Error Responses
+
+<Warning>
+  The prompt name must be unique for your account. Creating a prompt with a duplicate name will result in a 409 Conflict error.
+</Warning>
+
+```json 400 Bad Request - Invalid Name Format
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "validation failed",
+    "fields": {
+      "name": "must match ^[a-z0-9-]+$"
+    }
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "missing user in context"
+  }
+}
+```
+
+```json 409 Conflict
+{
+  "error": {
+    "code": "CONFLICT",
+    "message": "prompt already exists"
+  }
+}
+```
+
+## Implementation Reference
+
+This endpoint is implemented in the `Create` handler at `internal/prompts/handler.go:36`.

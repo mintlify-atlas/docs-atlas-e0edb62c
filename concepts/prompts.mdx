@@ -1,0 +1,122 @@
+---
+title: Prompts
+description: Understanding prompts in Prompts.dev
+---
+
+## What is a Prompt?
+
+A **prompt** is a reusable instruction for an AI model that can be versioned, shared, and distributed through the Prompts.dev registry.
+
+Prompts solve a common problem: today, AI prompts are scattered across documentation, codebases, note apps, and chat history with no version control, sharing mechanism, or discoverability. Prompts.dev provides a centralized way to create, version, and distribute prompts just like npm does for packages or GitHub does for code.
+
+<Note>
+Prompts in Prompts.dev are stored as **packages** that can be installed via the CLI and run locally.
+</Note>
+
+## Prompt Data Model
+
+Each prompt in the registry has the following metadata:
+
+```go
+type Prompt struct {
+    ID            string    `json:"id"`            // UUID identifier
+    Name          string    `json:"name"`          // Prompt name (unique per owner)
+    Description   string    `json:"description"`   // Short description
+    OwnerID       string    `json:"owner_id"`      // Owner's user ID
+    CreatedAt     time.Time `json:"created_at"`    // Creation timestamp
+    OwnerUsername string    `json:"owner_username"` // Owner's username
+    Tags          []string  `json:"tags"`          // Searchable tags
+}
+```
+
+### Key Characteristics
+
+<Card title="Unique Naming" icon="fingerprint">
+  Each prompt has a unique constraint on `(owner_id, name)`, ensuring no duplicate prompt names per owner.
+</Card>
+
+<Card title="Ownership" icon="user">
+  Every prompt belongs to a user (the owner), identified by their GitHub username.
+</Card>
+
+<Card title="Tagging" icon="tag">
+  Prompts can have multiple tags for discovery and categorization (e.g., "marketing", "writing").
+</Card>
+
+## Template Variables
+
+Prompts support **template variables** that make them reusable across different contexts. Variables are defined using double curly braces:
+
+```markdown
+You are a senior marketing copywriter.
+
+Write a landing page for {{product}}.
+
+Target audience: {{audience}}
+
+Include sections:
+- Hero
+- Features
+- Benefits
+- CTA
+```
+
+### Using Variables
+
+When running a prompt via the CLI, you pass variable values as arguments:
+
+```bash
+prompt run landing-page-writer --product="AI SaaS" --audience="developers"
+```
+
+The CLI reads the prompt template, replaces the variables with provided values, and outputs the final prompt text.
+
+<Info>
+Variables can be marked as **required** or **optional** in the `prompt.yaml` configuration file.
+</Info>
+
+## Prompt Discovery
+
+Prompts can be discovered through:
+
+- **Search**: Full-text search by name and description
+- **Tags**: Browse prompts by category tags
+- **Owner**: View all prompts from a specific user
+
+<Accordion title="Example: Finding prompts">
+  ```bash
+  # Search for prompts
+  prompt search landing
+  
+  # Install a specific prompt
+  prompt install topboy/landing-page-writer
+  ```
+</Accordion>
+
+## Creating a Prompt
+
+To create a new prompt:
+
+1. Initialize a prompt package:
+   ```bash
+   prompt init my-prompt
+   ```
+
+2. Edit the generated files:
+   - `prompt.yaml` - metadata and configuration
+   - `prompt.md` - the actual prompt content with variables
+   - `README.md` - documentation (optional)
+
+3. Publish to the registry:
+   ```bash
+   prompt publish
+   ```
+
+<Note>
+Prompts are immutable once published. To make changes, publish a new version.
+</Note>
+
+## Related Concepts
+
+- [Packages](/concepts/packages) - Learn about prompt package structure
+- [Versions](/concepts/versions) - Understand semantic versioning for prompts

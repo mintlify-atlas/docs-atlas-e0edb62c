@@ -1,0 +1,357 @@
+---
+title: Authentication
+description: Learn how authentication works in Prompts.dev
+---
+
+Prompts.dev uses OAuth 2.0 for authentication with support for GitHub and Google as identity providers. After authentication, you receive a JWT token that's stored locally and used for subsequent API requests.
+
+## Supported providers
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github">
+    Authenticate using your GitHub account
+  </Card>
+  <Card title="Google" icon="google">
+    Authenticate using your Google account
+  </Card>
+</CardGroup>
+
+## OAuth flow
+
+<Steps>
+
+<Step title="Initiate login">
+
+Run the login command:
+
+```bash
+prompt login
+```
+
+Or specify a provider explicitly:
+
+```bash
+prompt login --provider github
+prompt login --provider google
+```
+
+The CLI:
+1. Generates a random state parameter for CSRF protection (32-byte base64-encoded string)
+2. Starts a local HTTP server on `127.0.0.1:9876` to receive the OAuth callback
+3. Opens your browser to the OAuth provider's login page
+
+From `cmd/cli/main.go:84-157`:
+
+```go
+func loginCmd() *cobra.Command {
+    provider := "github"
+    cmd := &cobra.Command{
+        Use:   "login",
+        Short: "Login with OAuth provider",
+        RunE: func(cmd *cobra.Command, args []string) error {
+            state, err := randomState(32)
+            if err != nil {
+                return err
+            }
+
+            apiBase := strings.TrimRight(os.Getenv("PROMPTS_API_URL"), "/")
+            if apiBase == "" {
+                apiBase = "http://localhost:8080/v1"
+            }
+            loginURL := fmt.Sprintf("%s/auth/%s/login?cli=true&state=%s", apiBase, provider, state)
+
+            // Start local callback server...
+        },
+    }
+    cmd.Flags().StringVar(&provider, "provider", "github", "oauth provider: github|google")
+    return cmd
+}
+```
+
+</Step>
+
+<Step title="Complete OAuth flow">
+
+In your browser:
+
+1. You're redirected to the OAuth provider (GitHub or Google)
+2. Grant permission to Prompts.dev
+3. The provider redirects back to the Prompts.dev API
+
+<Note>
+The API validates the state parameter to prevent CSRF attacks using HMAC-SHA256 signatures.
+</Note>
+
+The server-side OAuth implementation from `internal/auth/service.go:155-262`:
+
+**GitHub OAuth:**
+- Scopes requested: `read:user`, `user:email`
+- Fetches user profile from `https://api.github.com/user`
+- Retrieves verified email from `https://api.github.com/user/emails`
+
+**Google OAuth:**
+- Scopes requested: `openid`, `email`, `profile`
+- Fetches user profile from `https://openidconnect.googleapis.com/v1/userinfo`
+
+</Step>
+
+<Step title="User creation and identity linking">
+
+The authentication service performs the following:
+
+1. Checks if a user identity exists for the provider user ID
+2. If not found, checks if a user exists with the verified email
+3. Creates a new user if needed
+4. Links the OAuth identity to the user account
+
+From `internal/auth/service.go:88-128`:
+
+```go
+func (s *AuthService) UpsertUser(ctx context.Context, providerUser *ProviderUser) (*users.User, error) {
+    identity, err := s.identitiesRepo.FindByProviderUserID(ctx, providerUser.Provider, providerUser.ProviderUserID)
+    if err != nil {
+        return nil, err
+    }
+    if identity != nil {
+        return s.usersRepo.FindByID(ctx, identity.UserID)
+    }
+
+    var user *users.User
+    if providerUser.EmailVerified && providerUser.Email != "" {
+        user, err = s.usersRepo.FindByEmail(ctx, providerUser.Email)
+        if err != nil {
+            return nil, err
+        }
+    }
+
+    if user == nil {
+        user, err = s.usersRepo.Create(ctx, &users.User{
+            Username:  fallbackUsername(providerUser),
+            Email:     strings.TrimSpace(providerUser.Email),
+            AvatarURL: strings.TrimSpace(providerUser.AvatarURL),
+        })
+        if err != nil {
+            return nil, err
+        }
+    }
+
+    // Create identity link...
+}
+```
+
+<Tip>
+If you've logged in with GitHub before and then use Google with the same verified email, both identities are linked to the same user account.
+</Tip>
+
+</Step>
+
+<Step title="JWT token issuance">
+
+After successful authentication:
+
+1. The API generates a JWT token containing your user ID
+2. For CLI flows, redirects to `http://localhost:9876/callback?token=<jwt>&state=<state>`
+3. The local CLI server captures the token
+
+From `internal/auth/token.go:15-27`:
+
+```go
+func SignToken(userID, secret string, expiryHours int) (string, error) {
+    now := time.Now()
+    claims := Claims{
+        UserID: userID,
+        RegisteredClaims: jwt.RegisteredClaims{
+            Subject:   userID,
+            IssuedAt:  jwt.NewNumericDate(now),
+            ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(expiryHours) * time.Hour)),
+        },
+    }
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    return token.SignedString([]byte(secret))
+}
+```
+
+JWT claims include:
+- `user_id`: Your unique user identifier
+- `sub`: Subject (same as user_id)
+- `iat`: Issued at timestamp
+- `exp`: Expiration timestamp
+
+The token is signed using HMAC-SHA256.
+
+</Step>
+
+<Step title="Token storage">
+
+The CLI stores the JWT token locally:
+
+```bash
+~/.prompts/config.json
+```
+
+File format:
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+From `cmd/cli/main.go:395-403`:
+
+```go
+func writeToken(token string) error {
+    home, err := os.UserHomeDir()
+    if err != nil {
+        return err
+    }
+    path := filepath.Join(home, ".prompts", "config.json")
+    data, _ := json.MarshalIndent(map[string]string{"token": token}, "", "  ")
+    return os.WriteFile(path, data, 0o600)
+}
+```
+
+<Warning>
+The token file has permissions `0600` (read/write for owner only) to prevent unauthorized access.
+</Warning>
+
+</Step>
+
+</Steps>
+
+## Using the token
+
+The CLI automatically reads the token from `~/.prompts/config.json` and includes it in API requests.
+
+From `pkg/client/client.go:32-40`:
+
+```go
+func New() (*Client, error) {
+    base := strings.TrimRight(os.Getenv("PROMPTS_API_URL"), "/")
+    if base == "" {
+        base = "https://api.prompts.dev/v1"
+    }
+
+    token, _ := readToken()
+    return &Client{BaseURL: base, Token: token, HTTPClient: &http.Client{}}, nil
+}
+```
+
+Authenticated requests include the token as a Bearer token:
+
+```go
+if authenticated && c.Token != "" {
+    req.Header.Set("Authorization", "Bearer "+c.Token)
+}
+```
+
+## Token expiration
+
+JWT tokens expire after a configured number of hours (typically 720 hours / 30 days).
+
+When a token expires:
+- API requests return a `401 Unauthorized` status
+- The CLI returns an `ErrUnauthenticated` error
+- You need to run `prompt login` again to obtain a new token
+
+From `pkg/client/client.go:70-78`:
+
+```go
+if resp.StatusCode == http.StatusUnauthorized {
+    defer resp.Body.Close()
+    var apiErr apiErrorResponse
+    _ = json.NewDecoder(resp.Body).Decode(&apiErr)
+    if apiErr.Error.RequestID != "" {
+        return nil, fmt.Errorf("%w: request_id=%s", ErrUnauthenticated, apiErr.Error.RequestID)
+    }
+    return nil, ErrUnauthenticated
+}
+```
+
+## Security considerations
+
+<CardGroup cols={2}>
+  <Card title="State parameter" icon="shield">
+    Random 32-byte state prevents CSRF attacks using HMAC signatures
+  </Card>
+  <Card title="Local server" icon="server">
+    Binds to 127.0.0.1 (localhost only) to prevent remote access
+  </Card>
+  <Card title="Token storage" icon="lock">
+    Stored with 0600 permissions (owner read/write only)
+  </Card>
+  <Card title="Timeout" icon="clock">
+    Login flow times out after 2 minutes if not completed
+  </Card>
+</CardGroup>
+
+## Environment variables
+
+Customize authentication behavior:
+
+```bash
+# API endpoint (defaults to https://api.prompts.dev/v1)
+export PROMPTS_API_URL="https://api.example.com/v1"
+```
+
+## Troubleshooting
+
+### Login fails silently
+
+Check if port 9876 is available:
+
+```bash
+lsof -i :9876
+```
+
+If occupied, stop the process using that port.
+
+### Token not found
+
+Verify the token file exists:
+
+```bash
+cat ~/.prompts/config.json
+```
+
+If missing, run `prompt login` again.
+
+### Unauthenticated errors
+
+Your token may have expired. Re-authenticate:
+
+```bash
+prompt login
+```
+
+### State mismatch
+
+This indicates a potential CSRF attack or browser cookie issues. Clear your browser cookies and try again:
+
+```bash
+prompt login
+```
+
+## Manual token management
+
+You can manually set a token if needed:
+
+```bash
+echo '{"token": "your-jwt-token-here"}' > ~/.prompts/config.json
+chmod 600 ~/.prompts/config.json
+```
+
+<Warning>
+Only use tokens from trusted sources. Never share your token or commit it to version control.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with your first prompt
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/cli/commands">
+    Explore all available commands
+  </Card>
+</CardGroup>

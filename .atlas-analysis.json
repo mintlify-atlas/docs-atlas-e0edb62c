@@ -1,0 +1,109 @@
+{
+  "projectType": "api-service",
+  "projectName": "Prompts.dev",
+  "projectDescription": "A registry and distribution platform for AI prompts with versioning, publishing, and CLI-based installation.",
+  "theme": "palm",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4f46e5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/installation",
+              "cli/commands",
+              "cli/workflow"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/prompts",
+              "concepts/packages",
+              "concepts/versions"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/local-setup",
+              "development/architecture",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/authentication",
+              "api/oauth"
+            ]
+          },
+          {
+            "group": "Prompts",
+            "pages": [
+              "api/prompts/create",
+              "api/prompts/get",
+              "api/prompts/search"
+            ]
+          },
+          {
+            "group": "Versions",
+            "pages": [
+              "api/versions/upload",
+              "api/versions/list",
+              "api/versions/download"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "api/errors",
+              "api/rate-limits"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Version-controlled AI prompt storage",
+    "CLI-based publishing and installation",
+    "OAuth authentication (GitHub/Google)",
+    "Package-based prompt distribution",
+    "Search and discovery",
+    "Template variable support"
+  ],
+  "publicApiSurface": [
+    "POST /v1/prompts",
+    "GET /v1/prompts/:owner/:name",
+    "GET /v1/prompts?q=:query",
+    "POST /v1/prompts/:id/versions",
+    "GET /v1/prompts/:owner/:name/versions",
+    "GET /v1/prompts/:owner/:name/versions/:version/download",
+    "GET /v1/auth/:provider/login",
+    "GET /v1/auth/:provider/callback",
+    "prompt login",
+    "prompt init",
+    "prompt publish",
+    "prompt install",
+    "prompt run",
+    "prompt search"
+  ]
+}
